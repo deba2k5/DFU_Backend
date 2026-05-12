@@ -21,12 +21,20 @@ class DiagnosticianAgent:
             'Grade 4 - Localized Gangrene',
             'Grade 5 - Extensive Gangrene'
         ]
+        self.model_path = model_path
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = self._load_model(model_path)
+        self._model = None  # Lazy loading
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
+
+    @property
+    def model(self):
+        """Lazy-loaded model property."""
+        if self._model is None:
+            self._model = self._load_model(self.model_path)
+        return self._model
 
     def _load_model(self, model_path):
         # Initialize MobileNetV3-Small structure
@@ -39,9 +47,12 @@ class DiagnosticianAgent:
         abs_model_path = os.path.join(base_dir, model_path)
         
         if os.path.exists(abs_model_path):
-            checkpoint = torch.load(abs_model_path, map_location=self.device)
-            model.load_state_dict(checkpoint['model_state_dict'])
-            print(f"Loaded trained model from {abs_model_path}")
+            try:
+                checkpoint = torch.load(abs_model_path, map_location=self.device)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                print(f"Loaded trained model from {abs_model_path}")
+            except Exception as e:
+                print(f"Error loading model weights: {str(e)}. Using uninitialized model.")
         else:
             print(f"Warning: Model file not found at {abs_model_path}. Using uninitialized model.")
         
