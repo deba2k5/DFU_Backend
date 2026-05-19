@@ -18,3 +18,9 @@ dist/
 train_dataset/
 val_dataset/
 Original_DFU_Augg/
+models/
+*.log
+test_*.py
+training*.py
+README.md
+*.md
