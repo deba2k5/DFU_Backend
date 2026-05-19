@@ -3,16 +3,18 @@
   "buildCommand": "echo 'Python build complete'",
   "builds": [
     {
-      "src": "api/*.py",
+      "src": "api/health.py",
+      "use": "@vercel/python@latest"
+    },
+    {
+      "src": "api/predict.py",
+      "use": "@vercel/python@latest"
+    },
+    {
+      "src": "api/chat.py",
       "use": "@vercel/python@latest"
     }
   ],
-  "functions": {
-    "api/*.py": {
-      "maxDuration": 60,
-      "memory": 1024
-    }
-  },
   "routes": [
     {
       "src": "/health",
