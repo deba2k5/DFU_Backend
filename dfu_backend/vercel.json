@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "echo 'Python build complete'",
+  "buildCommand": "pip install -r requirements-vercel.txt",
   "builds": [
     {
       "src": "api/health.py",

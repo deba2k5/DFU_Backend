@@ -24,3 +24,4 @@ test_*.py
 training*.py
 README.md
 *.md
+requirements.txt
