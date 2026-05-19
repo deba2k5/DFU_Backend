@@ -22,7 +22,7 @@ class DiagnosticianAgent:
         ]
         # Index mapping to fix model output misalignment (from training data issues)
         # Maps model output index → correct class index
-        self.index_mapping = {0: 0, 1: 3, 2: 2, 3: 1, 4: 4, 5: 5}
+        self.index_mapping = {0: 3, 1: 0, 2: 2, 3: 1, 4: 4, 5: 5}
         self.model_path = model_path
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._model = None  # Lazy loading
