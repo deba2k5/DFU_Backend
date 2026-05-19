@@ -11,16 +11,18 @@ class DiagnosticianAgent:
     Uses a trained MobileNetV3-Small model to predict Wagner Scale grades.
     """
     def __init__(self, model_path="models/ulcer_classification_mobilenetv3.pth"):
-        # NOTE: model's output ordering had Grade 1 and Grade 3 swapped during training.
-        # Quick mapping fix: swap entries for index 1 and 3 so predictions align with labels.
+        # Correct class mapping for Wagner Scale DFU grades
         self.classes = [
             'Grade 0 - Healthy',
-            'Grade 3 - Osteomyelitis',  # swapped to match model index 1
+            'Grade 1 - Surface Ulcer',
             'Grade 2 - Deep Ulcer',
-            'Grade 1 - Surface Ulcer',  # swapped to match model index 3
+            'Grade 3 - Osteomyelitis',
             'Grade 4 - Localized Gangrene',
             'Grade 5 - Extensive Gangrene'
         ]
+        # Index mapping to fix model output misalignment (from training data issues)
+        # Maps model output index → correct class index
+        self.index_mapping = {0: 0, 1: 3, 2: 2, 3: 1, 4: 4, 5: 5}
         self.model_path = model_path
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._model = None  # Lazy loading
@@ -71,17 +73,19 @@ class DiagnosticianAgent:
         with torch.no_grad():
             outputs = self.model(input_tensor)
             probs = torch.softmax(outputs, dim=1)[0]
-            confidence, predicted_idx = torch.max(probs, 0)
+            confidence, model_predicted_idx = torch.max(probs, 0)
 
-        predicted_idx = int(predicted_idx.item())
+        model_predicted_idx = int(model_predicted_idx.item())
+        # Apply index mapping to correct model output
+        predicted_idx = self.index_mapping.get(model_predicted_idx, model_predicted_idx)
         confidence = float(confidence.item())
         probs_list = probs.cpu().numpy().tolist()
 
         return {
             "stage": predicted_idx,
             "label": self.classes[predicted_idx],
-            "condition": self.classes[predicted_idx], # Alias for frontend compatibility
-            "confidence": f"{confidence:.4f}", # String formatted for frontend parsing
+            "condition": self.classes[predicted_idx],
+            "confidence": f"{confidence:.4f}",
             "wagner_scale": f"Grade {predicted_idx}",
             "probabilities": {
                 self.classes[i]: round(probs_list[i], 4) for i in range(len(self.classes))
