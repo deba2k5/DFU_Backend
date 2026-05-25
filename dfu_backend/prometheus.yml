@@ -1,0 +1,41 @@
+# Prometheus Configuration for DFU Screening API
+
+global:
+  scrape_interval: 15s          # How often to scrape targets
+  evaluation_interval: 15s      # How often to evaluate rules
+  external_labels:
+    monitor: 'dfu-screening'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules
+rule_files: []
+
+scrape_configs:
+  # DFU Screening API
+  - job_name: 'dfu-api'
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    scrape_timeout: 2s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Node Exporter (System metrics)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

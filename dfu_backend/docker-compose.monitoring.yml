@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Prometheus - Metrics collection and storage
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dfu_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - dfu_network
+    restart: unless-stopped
+
+  # Grafana - Dashboard and visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dfu_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - ./grafana_data:/var/lib/grafana
+      - ./grafana_provisioning:/etc/grafana/provisioning
+    networks:
+      - dfu_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # Node Exporter - System metrics
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: dfu_node_exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - dfu_network
+    restart: unless-stopped
+
+networks:
+  dfu_network:
+    driver: bridge
