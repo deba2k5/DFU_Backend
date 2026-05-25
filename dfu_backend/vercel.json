@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "pip install --upgrade pip && pip install -r requirements-vercel.txt --no-cache-dir",
+  "buildCommand": "uv pip install -r requirements-vercel.txt",
   "routes": [
     {
       "src": "/(.*)",
