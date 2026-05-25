@@ -3,37 +3,24 @@
   "buildCommand": "pip install -r requirements-vercel.txt",
   "builds": [
     {
-      "src": "api/health.py",
-      "use": "@vercel/python@latest"
-    },
-    {
-      "src": "api/predict.py",
-      "use": "@vercel/python@latest"
-    },
-    {
-      "src": "api/chat.py",
+      "src": "api/index.py",
       "use": "@vercel/python@latest"
     }
   ],
   "routes": [
     {
-      "src": "/health",
-      "dest": "api/health.py"
-    },
-    {
-      "src": "/predict",
-      "dest": "api/predict.py"
-    },
-    {
-      "src": "/chat",
-      "dest": "api/chat.py"
-    },
-    {
       "src": "/(.*)",
-      "dest": "api/health.py"
+      "dest": "api/index.py"
     }
   ],
   "env": {
-    "PYTHONUNBUFFERED": "1"
+    "PYTHONUNBUFFERED": "1",
+    "PYTORCH_ENABLE_MPS_FALLBACK": "1"
+  },
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 30,
+      "memory": 3008
+    }
   }
 }
