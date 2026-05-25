@@ -1,12 +1,6 @@
 {
   "version": 2,
   "buildCommand": "pip install -r requirements-vercel.txt",
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python@latest"
-    }
-  ],
   "routes": [
     {
       "src": "/(.*)",
