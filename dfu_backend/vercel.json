@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "uv pip install --system -r requirements-vercel.txt",
   "env": {
     "PYTHONUNBUFFERED": "1"
   }
