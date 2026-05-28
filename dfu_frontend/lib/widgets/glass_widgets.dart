@@ -41,7 +41,7 @@ class GlassCard extends StatelessWidget {
 }
 
 class GlassButton extends StatelessWidget {
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final String text;
   final Color? color;
 

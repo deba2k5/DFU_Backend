@@ -1,15 +1,69 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../widgets/glass_widgets.dart';
 import '../../core/theme.dart';
+import '../../core/auth_provider.dart';
+import '../../services/firestore_service.dart';
 
-class ResultScreen extends StatelessWidget {
+class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
+
+  @override
+  State<ResultScreen> createState() => _ResultScreenState();
+}
+
+class _ResultScreenState extends State<ResultScreen> {
+  bool _isSaving = false;
+  bool _saved = false;
+
+  Future<void> _saveReport({
+    required String userName,
+    required int stage,
+    required String condition,
+    required double confidence,
+    required String clinicalReport,
+    required String aiInsights,
+    required String imagePath,
+  }) async {
+    setState(() => _isSaving = true);
+    try {
+      // Fire-and-forget async save - shows success immediately, saves in background
+      FirestoreService().saveDFUReportAsync(
+        userName: userName,
+        stage: stage,
+        condition: condition,
+        confidence: confidence,
+        clinicalReport: clinicalReport,
+        aiInsights: aiInsights,
+        imagePath: imagePath,
+      );
+
+      setState(() {
+        _saved = true;
+        _isSaving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report saved! (background sync)'),
+          backgroundColor: AppTheme.mintGreen,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     // Retrieve arguments
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final String? imagePath = args?['imagePath'];
     // backend returns: {"success": true, "prediction": {...}, "clinical_report": "...", "ai_insights": "..."}
     final Map<String, dynamic>? data = args?['prediction'];
@@ -23,22 +77,36 @@ class ResultScreen extends StatelessWidget {
     } else {
       clinicalReport = clinicalReportRaw?.toString() ?? "";
     }
-    
+
     final String aiInsights = data?['ai_insights']?.toString() ?? "";
 
-    String rawCondition = prediction?['condition']?.toString() ?? "Unknown Diagnostic";
+    String rawCondition =
+        prediction?['condition']?.toString() ?? "Unknown Diagnostic";
     String rawConfidence = prediction?['confidence']?.toString() ?? "0.0";
-    
+
     int stage = 0;
-    if (rawCondition.toLowerCase().contains("extensive gangrene")) stage = 5;
-    else if (rawCondition.toLowerCase().contains("localized gangrene")) stage = 4;
-    else if (rawCondition.toLowerCase().contains("osteomyelitis") || rawCondition.toLowerCase().contains("grade 3")) stage = 3;
-    else if (rawCondition.toLowerCase().contains("deep ulcer") || rawCondition.toLowerCase().contains("grade 2")) stage = 2;
-    else if (rawCondition.toLowerCase().contains("surface ulcer") || rawCondition.toLowerCase().contains("grade 1")) stage = 1;
-    else if (rawCondition.toLowerCase().contains("healthy") || rawCondition.toLowerCase().contains("grade 0")) stage = 0;
+    if (rawCondition.toLowerCase().contains("extensive gangrene"))
+      stage = 5;
+    else if (rawCondition.toLowerCase().contains("localized gangrene"))
+      stage = 4;
+    else if (rawCondition.toLowerCase().contains("osteomyelitis") ||
+        rawCondition.toLowerCase().contains("grade 3"))
+      stage = 3;
+    else if (rawCondition.toLowerCase().contains("deep ulcer") ||
+        rawCondition.toLowerCase().contains("grade 2"))
+      stage = 2;
+    else if (rawCondition.toLowerCase().contains("surface ulcer") ||
+        rawCondition.toLowerCase().contains("grade 1"))
+      stage = 1;
+    else if (rawCondition.toLowerCase().contains("healthy") ||
+        rawCondition.toLowerCase().contains("grade 0"))
+      stage = 0;
     else {
       // Fallback: try to extract number from condition string if it says "Grade X"
-      final match = RegExp(r'grade\s*(\d)', caseSensitive: false).firstMatch(rawCondition);
+      final match = RegExp(
+        r'grade\s*(\d)',
+        caseSensitive: false,
+      ).firstMatch(rawCondition);
       if (match != null) {
         stage = int.tryParse(match.group(1) ?? "0") ?? 0;
       }
@@ -47,6 +115,8 @@ class ResultScreen extends StatelessWidget {
     double conf = double.tryParse(rawConfidence) ?? 0.89;
 
     final severityColor = _getSeverityColor(stage);
+    final authProvider = Provider.of<AuthProvider>(context);
+    final userName = authProvider.user?.displayName ?? 'Patient';
 
     return Scaffold(
       body: Stack(
@@ -71,7 +141,13 @@ class ResultScreen extends StatelessWidget {
                   const SizedBox(height: 30),
                   _buildImagePreview(imagePath),
                   const SizedBox(height: 30),
-                  _buildResultsCard(severityColor, rawCondition.toUpperCase(), conf, stage, context),
+                  _buildResultsCard(
+                    severityColor,
+                    rawCondition.toUpperCase(),
+                    conf,
+                    stage,
+                    context,
+                  ),
                   const SizedBox(height: 20),
                   _buildAIGroqCard(aiInsights),
                   const SizedBox(height: 20),
@@ -81,14 +157,26 @@ class ResultScreen extends StatelessWidget {
                     children: [
                       Expanded(
                         child: GlassButton(
-                          text: 'SAVE REPORT',
-                          onPressed: () {},
+                          text: _saved
+                              ? 'SAVED ✓'
+                              : (_isSaving ? 'SAVING...' : 'SAVE REPORT'),
+                          onPressed: _isSaving || _saved
+                              ? null
+                              : () {
+                                  _saveReport(
+                                    userName: userName,
+                                    stage: stage,
+                                    condition: rawCondition,
+                                    confidence: conf,
+                                    clinicalReport: clinicalReport,
+                                    aiInsights: aiInsights,
+                                    imagePath: imagePath ?? '',
+                                  );
+                                },
                         ),
                       ),
                       const SizedBox(width: 15),
-                      Expanded(
-                        child: _buildSecondaryButton('SHARE'),
-                      ),
+                      Expanded(child: _buildSecondaryButton('DASHBOARD')),
                     ],
                   ),
                 ],
@@ -106,11 +194,48 @@ class ResultScreen extends StatelessWidget {
       children: [
         IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.pushReplacementNamed(context, '/dashboard'),
+          onPressed: () =>
+              Navigator.pushReplacementNamed(context, '/dashboard'),
         ),
-        const Text(
-          'AI ANALYSIS RESULT',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.primaryCyan, width: 1),
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [AppTheme.primaryCyan, AppTheme.mintGreen],
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'AI ANALYSIS RESULT',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
         ),
         const Icon(Icons.more_vert, color: Colors.white),
       ],
@@ -124,15 +249,19 @@ class ResultScreen extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
         border: Border.all(color: Colors.white10),
-        image: imagePath != null 
-              ? DecorationImage(
-              image: NetworkImage(imagePath), // NetworkImage works for both blob URLs (web) and http URLs
-              fit: BoxFit.contain,
-            )
-          : const DecorationImage(
-              image: NetworkImage('https://images.unsplash.com/photo-1576091160550-217359f49f4c?auto=format&fit=crop&q=80&w=400'),
-              fit: BoxFit.contain,
-            ),
+        image: imagePath != null
+            ? DecorationImage(
+                image: NetworkImage(
+                  imagePath,
+                ), // NetworkImage works for both blob URLs (web) and http URLs
+                fit: BoxFit.contain,
+              )
+            : const DecorationImage(
+                image: NetworkImage(
+                  'https://images.unsplash.com/photo-1576091160550-217359f49f4c?auto=format&fit=crop&q=80&w=400',
+                ),
+                fit: BoxFit.contain,
+              ),
       ),
       child: Center(
         child: Container(
@@ -148,7 +277,13 @@ class ResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildResultsCard(Color severityColor, String conditionText, double confidence, int stage, BuildContext context) {
+  Widget _buildResultsCard(
+    Color severityColor,
+    String conditionText,
+    double confidence,
+    int stage,
+    BuildContext context,
+  ) {
     return GlassCard(
       padding: const EdgeInsets.all(25),
       child: Column(
@@ -162,12 +297,20 @@ class ResultScreen extends StatelessWidget {
                   children: [
                     Text(
                       'AI SCREENING OUTPUT',
-                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       conditionText,
-                      style: TextStyle(color: severityColor, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: severityColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 2,
                     ),
@@ -180,7 +323,11 @@ class ResultScreen extends StatelessWidget {
                   color: severityColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.analytics_outlined, color: severityColor, size: 30),
+                child: Icon(
+                  Icons.analytics_outlined,
+                  color: severityColor,
+                  size: 30,
+                ),
               ),
             ],
           ),
@@ -189,7 +336,7 @@ class ResultScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildMetric('Confidence', '${(confidence * 100).toInt()}%'),
-              _buildMetric('Model', 'MobileNetV3 Prediction'),
+              _buildMetric('Model', 'ONNX Model'),
               _buildMetric('Grade', 'Wagner $stage'),
             ],
           ),
@@ -201,9 +348,19 @@ class ResultScreen extends StatelessWidget {
   Widget _buildMetric(String label, String value) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+        Text(
+          label,
+          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+        ),
       ],
     );
   }
@@ -215,15 +372,31 @@ class ResultScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.psychology, color: Colors.purpleAccent, size: 20),
+              const Icon(
+                Icons.psychology,
+                color: Colors.purpleAccent,
+                size: 20,
+              ),
               const SizedBox(width: 10),
-              const Text('GROQ AI INSIGHTS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1)),
+              const Text(
+                'GROQ AI INSIGHTS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  letterSpacing: 1,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 15),
           Text(
             insights.isNotEmpty ? insights : "Generating cognitive summary...",
-            style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
         ],
       ),
@@ -236,11 +409,24 @@ class ResultScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('CLINICAL RECOMMENDATIONS', style: TextStyle(color: AppTheme.primaryCyan, fontWeight: FontWeight.bold, fontSize: 11)),
+          const Text(
+            'CLINICAL RECOMMENDATIONS',
+            style: TextStyle(
+              color: AppTheme.primaryCyan,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+          ),
           const SizedBox(height: 10),
           Text(
-            report.isNotEmpty ? report : "Observation required. Schedule follow-up scan in 48 hours.",
-            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13, height: 1.4),
+            report.isNotEmpty
+                ? report
+                : "Observation required. Schedule follow-up scan in 48 hours.",
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -256,26 +442,41 @@ class ResultScreen extends StatelessWidget {
       ),
       child: TextButton(
         onPressed: () {},
-        child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
 
   Color _getSeverityColor(int stage) {
     switch (stage) {
-      case 0: return AppTheme.mintGreen;
-      case 1: return Colors.yellowAccent;
-      case 2: return Colors.orangeAccent;
-      case 3: return Colors.redAccent;
-      case 4: return Colors.deepOrange;
-      case 5: return Colors.deepPurpleAccent;
-      default: return Colors.blueAccent;
+      case 0:
+        return AppTheme.mintGreen;
+      case 1:
+        return Colors.yellowAccent;
+      case 2:
+        return Colors.orangeAccent;
+      case 3:
+        return Colors.redAccent;
+      case 4:
+        return Colors.deepOrange;
+      case 5:
+        return Colors.deepPurpleAccent;
+      default:
+        return Colors.blueAccent;
     }
   }
 
   String _getRecommendation(int stage) {
-    if (stage >= 4) return 'CRITICAL: Gangrene detected. Immediate surgical consultation and emergency care required.';
-    if (stage >= 2) return 'URGENT: Recommended immediate clinical inspection and debridement.';
+    if (stage >= 4)
+      return 'CRITICAL: Gangrene detected. Immediate surgical consultation and emergency care required.';
+    if (stage >= 2)
+      return 'URGENT: Recommended immediate clinical inspection and debridement.';
     return 'Observation required. Schedule follow-up scan in 48 hours.';
   }
 }

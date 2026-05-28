@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum UserRole { admin, doctor, patient, unknown }
 
@@ -21,12 +22,23 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    // Initialize SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    // Load cached role if available
+    final cachedRole = prefs.getString('user_role');
+    if (cachedRole != null) {
+      _role = UserRole.values.firstWhere((e) => e.toString() == cachedRole, orElse: () => UserRole.unknown);
+    }
     _auth.authStateChanges().listen((User? user) async {
       _user = user;
       if (user != null) {
+        // If role not cached, fetch from Firestore
         await _fetchRole(user.uid);
+        // Save fetched role
+        await prefs.setString('user_role', _role.toString());
       } else {
         _role = UserRole.unknown;
+        await prefs.remove('user_role');
       }
       _isLoading = false;
       notifyListeners();
