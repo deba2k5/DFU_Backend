@@ -8,6 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import and export the FastAPI app for Vercel
 from main import app
 
-# Vercel Python expects an ASGI app or handler function
-# FastAPI app is already an ASGI application
+# Export the app as the handler for Vercel
+# This makes the entire FastAPI app available as a serverless function
 

@@ -5,43 +5,21 @@
   },
   "builds": [
     {
-      "src": "dfu_backend/api/health.py",
-      "use": "@vercel/python@latest"
-    },
-    {
-      "src": "dfu_backend/api/predict.py",
-      "use": "@vercel/python@latest"
-    },
-    {
-      "src": "dfu_backend/api/chat.py",
-      "use": "@vercel/python@latest"
+      "src": "dfu_backend/api/index.py",
+      "use": "@vercel/python@latest",
+      "config": {
+        "maxLambdaSize": "15mb",
+        "runtime": "python3.11"
+      }
     }
   ],
   "routes": [
     {
-      "src": "/health",
-      "dest": "dfu_backend/api/health.py"
-    },
-    {
-      "src": "/predict",
-      "dest": "dfu_backend/api/predict.py"
-    },
-    {
-      "src": "/chat",
-      "dest": "dfu_backend/api/chat.py"
-    },
-    {
       "src": "/(.*)",
-      "dest": "dfu_backend/api/health.py"
+      "dest": "dfu_backend/api/index.py"
     }
   ],
   "env": {
     "PYTHONUNBUFFERED": "1"
-  },
-  "functions": {
-    "dfu_backend/api/*.py": {
-      "maxDuration": 60,
-      "memory": 1024
-    }
   }
 }
