@@ -23,9 +23,9 @@ class DiagnosticianAgent:
         self.model_path = model_path
         self._session = None
         
-        # ImageNet normalization stats
-        self.mean = np.array([0.485, 0.456, 0.406])
-        self.std = np.array([0.229, 0.224, 0.225])
+        # ImageNet normalization stats (ensure float32)
+        self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        self.std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
     @property
     def session(self):
@@ -72,17 +72,19 @@ class DiagnosticianAgent:
         
         pil_image = pil_image.resize((224, 224))
         
-        # Convert to numpy array and normalize
-        img_array = np.array(pil_image).astype(np.float32) / 255.0
+        # Convert to numpy array and normalize (explicit float32)
+        img_array = np.array(pil_image, dtype=np.float32) / 255.0
         
-        # Normalize with ImageNet mean/std
-        img_array = (img_array - self.mean) / self.std
+        # Normalize with ImageNet mean/std (all float32)
+        img_array = (img_array - self.mean.reshape(1, 1, 3)) / self.std.reshape(1, 1, 3)
+        img_array = img_array.astype(np.float32)  # Ensure float32
         
         # Convert to CHW (channel-height-width) format
         if len(img_array.shape) == 3:
             img_array = np.transpose(img_array, (2, 0, 1))
         
-        return np.expand_dims(img_array, axis=0)  # Add batch dimension
+        # Add batch dimension and ensure float32
+        return np.expand_dims(img_array, axis=0).astype(np.float32)
 
     def infer(self, processed_image: np.ndarray) -> dict:
         """
