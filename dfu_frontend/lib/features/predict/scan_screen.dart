@@ -191,7 +191,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('${BackendConfig.baseUrl}/predict'),
+        Uri.parse('${BackendConfig.predictUrl}/predict'),
       );
 
       request.fields['patient_data'] = jsonEncode(_intakePayload());
@@ -211,7 +211,10 @@ class _ScanScreenState extends State<ScanScreen> {
         );
       }
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => throw Exception('Request timed out (60s). The AI server may be waking up — please try again in 30 seconds.'),
+      );
       final response = await http.Response.fromStream(streamedResponse);
 
       if (!mounted) return;
@@ -227,9 +230,26 @@ class _ScanScreenState extends State<ScanScreen> {
             'intake': _intakePayload(),
           },
         );
+      } else if (response.statusCode == 503) {
+        _showError(
+          'AI Service is starting up — please wait 30 seconds and try again.\n'
+          'The prediction server takes a moment to wake from sleep.',
+        );
       } else {
-        _showError('Server Error: ${response.statusCode}');
+        String detail = '';
+        try {
+          final err = jsonDecode(response.body);
+          detail = err['detail']?.toString() ?? '';
+        } catch (_) {
+          detail = response.body;
+        }
+        _showError('Server Error ${response.statusCode}: $detail');
       }
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _showError(msg);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
@@ -237,11 +257,17 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 6),
+      ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
