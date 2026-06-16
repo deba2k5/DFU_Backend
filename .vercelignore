@@ -62,6 +62,10 @@ dfu_backend/*.log
 dfu_backend/train_dataset/
 dfu_backend/val_dataset/
 dfu_backend/Original_DFU_Augg/
+dfu_dataset/
+dfu_raw_dataset/
+dfu_train/
+dfu_val/
 
 # Documentation (not needed at runtime)
 README.md
@@ -81,6 +85,8 @@ dfu_backend/quantize_model.py
 dfu_backend/training*.py
 dfu_backend/MobileNetV3_Model_Save.py
 dfu_backend/Segmentation_Pipeline.py
+train_and_export.py
+validate_model.py
 
 # Vercel internal
 .vercel/
@@ -90,4 +96,3 @@ chroma_dfu_reports/
 **/chroma_dfu_reports/
 dfu_backend/chroma_dfu_reports/
 dfu_backend/models/
-
