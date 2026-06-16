@@ -19,10 +19,36 @@ from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from utils.logger import get_logger, log_performance, log_error_with_context
-from utils.metrics import track_request, track_inference, record_request, record_error, record_prediction, get_metrics
+# ── Utils (optional — no-op fallbacks if packages missing) ───────────
+try:
+    from utils.logger import get_logger, log_performance, log_error_with_context
+    logger = get_logger("vercel_api")
+except Exception as _le:
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO)
+    _base_logger = _logging.getLogger("vercel_api")
+    def get_logger(name="vercel_api"): return _base_logger
+    def log_performance(stage, ms, extra=None): _base_logger.info(f"{stage}: {ms:.0f}ms")
+    def log_error_with_context(e, ctx=None): _base_logger.error(f"{e} ctx={ctx}")
+    logger = _base_logger
+    print(f"Logger unavailable (using stdlib): {_le}")
 
-logger = get_logger("vercel_api")
+try:
+    from utils.metrics import track_request, track_inference, record_request, record_error, record_prediction, get_metrics
+    METRICS_OK = True
+except Exception as _me:
+    from contextlib import contextmanager
+    @contextmanager
+    def track_request(endpoint): yield
+    @contextmanager
+    def track_inference(stage): yield
+    def record_request(method, endpoint, status): pass
+    def record_error(error_type, endpoint): pass
+    def record_prediction(grade, confidence): pass
+    def get_metrics(): return b""
+    METRICS_OK = False
+    print(f"Metrics unavailable: {_me}")
+
 
 load_dotenv()
 
