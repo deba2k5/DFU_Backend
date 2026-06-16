@@ -91,8 +91,11 @@ validate_model.py
 # Vercel internal
 .vercel/
 
-# Local databases & large model files (too large for Vercel Lambda)
+# Local databases — exclude ChromaDB local store
 chroma_dfu_reports/
 **/chroma_dfu_reports/
 dfu_backend/chroma_dfu_reports/
-dfu_backend/models/
+
+# Keep dfu_backend/models/*.onnx (needed for inference, only 0.3MB)
+# Only exclude the large .pth checkpoint
+dfu_backend/models/*.pth

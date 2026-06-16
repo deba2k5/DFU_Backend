@@ -265,6 +265,26 @@ async def health():
     }
 
 
+@app.get("/debug/paths")
+async def debug_paths():
+    """Shows filesystem paths visible to the lambda — helps diagnose model loading."""
+    import glob
+    task_files = glob.glob("/var/task/**/*.onnx", recursive=True)
+    cwd_files  = glob.glob(os.path.join(os.getcwd(), "**/*.onnx"), recursive=True)
+    agents_file = os.path.abspath(__file__)
+    base_dir = os.path.dirname(os.path.dirname(agents_file))
+    return {
+        "cwd": os.getcwd(),
+        "this_file": agents_file,
+        "base_dir": base_dir,
+        "onnx_in_var_task": task_files,
+        "onnx_in_cwd": cwd_files,
+        "model_exists_base": os.path.exists(
+            os.path.join(base_dir, "models/ulcer_classification_mobilenetv3.onnx")
+        ),
+    }
+
+
 @app.post("/predict")
 async def predict_ulcer(
     file: UploadFile = File(...),

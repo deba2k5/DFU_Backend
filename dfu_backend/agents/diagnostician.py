@@ -41,23 +41,41 @@ class DiagnosticianAgent:
         return self._session
 
     def _load_model(self, model_path):
-        """Load ONNX model using ONNX Runtime."""
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        abs_model_path = os.path.join(base_dir, model_path)
+        """Load ONNX model — tries multiple path roots for Vercel/Docker compat."""
+        # Build a list of candidate paths to find the model
+        candidates = []
 
-        if not os.path.exists(abs_model_path):
-            print(f"Warning: Model file not found at {abs_model_path}")
+        # 1. Relative to agents/ parent (standard local + Docker layout)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidates.append(os.path.join(base_dir, model_path))
+
+        # 2. /var/task/ — Vercel Lambda root when deployed from repo root
+        candidates.append(os.path.join("/var/task", model_path))
+
+        # 3. /var/task/dfu_backend/ — if Vercel uses subdirectory as root
+        candidates.append(os.path.join("/var/task/dfu_backend", model_path))
+
+        # 4. Relative to CWD
+        candidates.append(os.path.join(os.getcwd(), model_path))
+
+        abs_model_path = None
+        for c in candidates:
+            if os.path.exists(c):
+                abs_model_path = c
+                break
+
+        if abs_model_path is None:
+            print(f"Warning: ONNX model not found. Tried: {candidates}")
             return None
 
         try:
             session_options = ort.SessionOptions()
-            session_options.log_severity_level = 3  # Suppress verbose warnings
+            session_options.log_severity_level = 3
             session = ort.InferenceSession(
                 abs_model_path,
                 providers=["CPUExecutionProvider"],
                 sess_options=session_options,
             )
-            # Validate output shape matches expected number of classes
             out_shape = session.get_outputs()[0].shape
             print(f"Loaded ONNX model from {abs_model_path} — output shape: {out_shape}")
             return session
