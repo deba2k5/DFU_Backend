@@ -1,15 +1,11 @@
 {
   "version": 2,
-  "projectSettings": {
-    "name": "dfu-app"
-  },
   "builds": [
     {
       "src": "dfu_backend/api/index.py",
-      "use": "@vercel/python@latest",
+      "use": "@vercel/python",
       "config": {
-        "maxLambdaSize": "15mb",
-        "runtime": "python3.11"
+        "maxLambdaSize": "50mb"
       }
     }
   ],

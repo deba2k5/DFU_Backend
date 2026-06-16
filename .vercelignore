@@ -34,6 +34,12 @@ __pycache__/
 .pytest_cache/
 .pytype/
 .mypy_cache/
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+dfu_backend/.venv/
+dfu_backend/venv/
 
 # Environment files
 .env
@@ -78,4 +84,10 @@ dfu_backend/Segmentation_Pipeline.py
 
 # Vercel internal
 .vercel/
+
+# Local databases & large model files (too large for Vercel Lambda)
+chroma_dfu_reports/
+**/chroma_dfu_reports/
+dfu_backend/chroma_dfu_reports/
+dfu_backend/models/
 

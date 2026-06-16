@@ -11,8 +11,13 @@ from loguru import logger
 from pathlib import Path
 
 # Create logs directory
-LOG_DIR = Path(__file__).parent.parent / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+IS_VERCEL = os.getenv("VERCEL") == "1"
+
+if not IS_VERCEL:
+    LOG_DIR = Path(__file__).parent.parent / "logs"
+    LOG_DIR.mkdir(exist_ok=True)
+else:
+    LOG_DIR = None
 
 # Remove default handler
 logger.remove()
@@ -45,33 +50,34 @@ logger.add(
     colorize=True,
 )
 
-# File handler - JSON format for production monitoring
-logger.add(
-    LOG_DIR / "app_{time:YYYY-MM-DD}.log",
-    format=json_formatter,
-    level="DEBUG",
-    rotation="500 MB",
-    retention="7 days",
-)
+if LOG_DIR:
+    # File handler - JSON format for production monitoring
+    logger.add(
+        LOG_DIR / "app_{time:YYYY-MM-DD}.log",
+        format=json_formatter,
+        level="DEBUG",
+        rotation="500 MB",
+        retention="7 days",
+    )
 
-# Error file handler - separate error logs
-logger.add(
-    LOG_DIR / "errors_{time:YYYY-MM-DD}.log",
-    format=json_formatter,
-    level="ERROR",
-    rotation="500 MB",
-    retention="30 days",
-)
+    # Error file handler - separate error logs
+    logger.add(
+        LOG_DIR / "errors_{time:YYYY-MM-DD}.log",
+        format=json_formatter,
+        level="ERROR",
+        rotation="500 MB",
+        retention="30 days",
+    )
 
-# Performance metrics file
-logger.add(
-    LOG_DIR / "performance_{time:YYYY-MM-DD}.log",
-    format=json_formatter,
-    level="INFO",
-    rotation="500 MB",
-    retention="30 days",
-    filter=lambda record: "performance" in record.get("extra", {}),
-)
+    # Performance metrics file
+    logger.add(
+        LOG_DIR / "performance_{time:YYYY-MM-DD}.log",
+        format=json_formatter,
+        level="INFO",
+        rotation="500 MB",
+        retention="30 days",
+        filter=lambda record: "performance" in record.get("extra", {}),
+    )
 
 def get_logger(name: str = __name__):
     """Get a logger instance with the given name"""

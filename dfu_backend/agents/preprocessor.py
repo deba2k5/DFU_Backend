@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
-from skimage.segmentation import active_contour
 
 class PreprocessingAgent:
     """
