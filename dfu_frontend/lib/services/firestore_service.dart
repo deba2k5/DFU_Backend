@@ -4,14 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 class BackendConfig {
-  // Vercel backend — handles /reports, /health, /chat (lightweight, always online)
+  // Single backend — Vercel handles everything: /predict, /reports, /health, /chat
+  // onnxruntime + ONNX model are bundled in the Vercel lambda (50MB limit)
   static const String baseUrl = 'https://dfu-app-z513.vercel.app';
-
-  // Full AI backend — handles /predict with ONNX model (onnxruntime + opencv)
-  // Deployed on Render.com as a Docker service.
-  // After deploying via render.yaml, replace this URL with your Render service URL.
-  // e.g. 'https://dfu-backend.onrender.com'
-  static const String predictUrl = 'https://dfu-backend-2f2z.onrender.com';
+  static const String predictUrl = 'https://dfu-app-z513.vercel.app';
 }
 
 

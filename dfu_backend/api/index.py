@@ -89,23 +89,23 @@ except Exception:
     PDF_OK = False
 
 # ── Agents ────────────────────────────────────────────────────────────
-# reporter and assistant are lightweight (no onnxruntime/opencv) — safe to
-# import eagerly. preprocessor (cv2) and diagnostician (onnxruntime) are
-# heavy and must stay unimported on Vercel; they are loaded lazily inside
-# the /predict handler which already returns 503 on Vercel anyway.
+# preprocessor: now pure Pillow+NumPy — safe to import on Vercel
+# reporter + assistant: lightweight — safe to import on Vercel
+# diagnostician: needs onnxruntime — lazy import inside /predict only
 try:
+    from agents.preprocessor import preprocessor_agent
     from agents.reporter import reporting_agent
     from agents.assistant import assistant_agent
     AGENTS_OK = True
 except Exception as _ae:
-    reporting_agent = None  # type: ignore
-    assistant_agent = None  # type: ignore
+    preprocessor_agent = None  # type: ignore
+    reporting_agent = None     # type: ignore
+    assistant_agent = None     # type: ignore
     AGENTS_OK = False
     print(f"Agents unavailable: {_ae}")
 
-# These are only used inside /predict — imported lazily at call time
-preprocessor_agent = None  # type: ignore
-diagnostician_agent = None  # type: ignore
+# diagnostician loaded lazily — only when /predict is actually called
+_diagnostician = None
 
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://dfu-app-z513.vercel.app")
 
@@ -273,15 +273,20 @@ async def predict_ulcer(
     if not AGENTS_OK:
         raise HTTPException(
             status_code=503,
-            detail="AI inference not available on this deployment. "
-                   "Send image to the Render backend /predict endpoint instead."
+            detail="AI agents failed to load on startup. Check server logs."
         )
-    # Lazy-load heavy agents only when actually called (Render deployment)
-    try:
-        from agents.preprocessor import preprocessor_agent as _pre
-        from agents.diagnostician import diagnostician_agent as _diag
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Inference dependencies missing: {e}")
+
+    # Lazy-load diagnostician (needs onnxruntime — may be absent on some hosts)
+    global _diagnostician
+    if _diagnostician is None:
+        try:
+            from agents.diagnostician import diagnostician_agent as _diag
+            _diagnostician = _diag
+        except ImportError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Inference engine not available: {e}"
+            )
 
     try:
         contents = await file.read()
@@ -289,13 +294,13 @@ async def predict_ulcer(
 
         with track_inference("preprocess"):
             t_start = time.time()
-            processed_img = _pre.process(contents)
+            processed_img = preprocessor_agent.process(contents)
             preprocess_ms = (time.time() - t_start) * 1000
             log_performance("preprocess", preprocess_ms)
 
         with track_inference("diagnosis"):
             t_start = time.time()
-            diagnosis = _diag.infer(processed_img)
+            diagnosis = _diagnostician.infer(processed_img)
             diagnosis_ms = (time.time() - t_start) * 1000
             log_performance("diagnosis", diagnosis_ms)
 

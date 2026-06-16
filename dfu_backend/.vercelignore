@@ -21,10 +21,8 @@ train_dataset/
 val_dataset/
 Original_DFU_Augg/
 
-# Heavy model files — only the lightweight .onnx is needed on Vercel
-# (Vercel lambda doesn't run inference anyway — agents_ok=false)
+# Heavy model files — exclude large .pth checkpoint, keep small .onnx for inference
 models/*.pth
-models/*.pth.data
 
 # Logs and build artifacts
 *.log
