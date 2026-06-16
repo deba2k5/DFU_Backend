@@ -3,7 +3,7 @@ import os
 
 def test_predict():
     url = "http://127.0.0.1:8000/predict"
-    img_path = r"c:\Users\Debangshu05\Downloads\projectv2.0 dfu\val_dataset\GRADE3\0_1590.jpg"
+    img_path = r"c:\Users\Debangshu05\Downloads\projectv2.0 dfu\assets\banner.png"
     
     if not os.path.exists(img_path):
         print(f"Error: Image not found at {img_path}")

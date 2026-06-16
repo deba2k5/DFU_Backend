@@ -8,6 +8,7 @@ import 'features/dashboard/main_wrapper.dart';
 import 'features/predict/scan_screen.dart';
 import 'features/predict/result_screen.dart';
 import 'features/splash/splash_screen.dart';
+import 'features/assessment/assessment_form_screen.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -42,6 +43,7 @@ class DFUApp extends StatelessWidget {
         '/dashboard': (context) => const MainWrapper(),
         '/scan': (context) => const ScanScreen(),
         '/results': (context) => const ResultScreen(),
+        '/assessment': (context) => const AssessmentFormScreen(),
       },
     );
   }

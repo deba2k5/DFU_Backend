@@ -71,3 +71,7 @@ training*.log
 Thumbs.db
 .vercel
 .env*
+
+# Local ChromaDB Reports database
+chroma_dfu_reports/
+dfu_backend/chroma_dfu_reports/

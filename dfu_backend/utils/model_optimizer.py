@@ -28,7 +28,7 @@ class ModelOptimizer:
         pytorch_model: nn.Module,
         input_shape: tuple = (1, 3, 224, 224),
         output_path: str = "model.onnx",
-        opset_version: int = 14
+        opset_version: int = 18
     ) -> str:
         """
         Convert PyTorch model to ONNX format
@@ -48,7 +48,7 @@ class ModelOptimizer:
             # Create dummy input
             dummy_input = torch.randn(input_shape, device=self.device)
             
-            full_output_path = self.model_dir / output_path
+            full_output_path = (self.model_dir / output_path).resolve().absolute()
             
             logger.info(f"Converting PyTorch model to ONNX: {output_path}")
             
@@ -98,7 +98,7 @@ class ModelOptimizer:
             if output_path is None:
                 output_path = onnx_model_path.replace(".onnx", "_quantized.onnx")
             
-            full_output_path = self.model_dir / output_path
+            full_output_path = (self.model_dir / output_path).resolve().absolute()
             
             logger.info(f"Quantizing ONNX model: {quantize_type} quantization")
             logger.info(f"Input: {onnx_model_path}")
@@ -108,7 +108,10 @@ class ModelOptimizer:
                 str(onnx_model_path),
                 str(full_output_path),
                 weight_type=QuantType.QUInt8,
-                optimize_model=True,
+                extra_options={
+                    "DisableShapeInference": True,
+                    "DefaultTensorType": onnx.TensorProto.FLOAT,
+                }
             )
             
             # Compare file sizes

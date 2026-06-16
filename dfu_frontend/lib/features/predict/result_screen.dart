@@ -1,9 +1,7 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/glass_widgets.dart';
 import '../../core/theme.dart';
-import '../../core/auth_provider.dart';
 import '../../services/firestore_service.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -16,42 +14,65 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   bool _isSaving = false;
   bool _saved = false;
+  bool _autoSaveStarted = false;
+  String? _pdfUrl;
 
-  Future<void> _saveReport({
-    required String userName,
-    required int stage,
-    required String condition,
-    required double confidence,
+  Future<void> _saveDetailedReport({
+    required Map<String, dynamic> intake,
+    required Map<String, dynamic> prediction,
     required String clinicalReport,
     required String aiInsights,
     required String imagePath,
   }) async {
+    if (_isSaving || _saved) {
+      return;
+    }
     setState(() => _isSaving = true);
     try {
-      // Fire-and-forget async save - shows success immediately, saves in background
-      FirestoreService().saveDFUReportAsync(
-        userName: userName,
-        stage: stage,
-        condition: condition,
-        confidence: confidence,
+      final result = await FirestoreService().saveDetailedDFUReport(
+        patient: Map<String, dynamic>.from(intake['patient'] ?? {}),
+        medicalHistory: Map<String, dynamic>.from(
+          intake['medicalHistory'] ?? {},
+        ),
+        diabeticFootHistory: Map<String, dynamic>.from(
+          intake['diabeticFootHistory'] ?? {},
+        ),
+        examination: Map<String, dynamic>.from(intake['examination'] ?? {}),
+        prediction: prediction,
         clinicalReport: clinicalReport,
         aiInsights: aiInsights,
         imagePath: imagePath,
       );
 
+      final pdfUrl = result['pdf_url']?.toString();
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _saved = true;
         _isSaving = false;
+        _pdfUrl = pdfUrl;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Report saved! (background sync)'),
+          content: Text('Report saved and PDF generated.'),
           backgroundColor: AppTheme.mintGreen,
           duration: Duration(seconds: 2),
         ),
       );
+
+      if (pdfUrl != null && pdfUrl.isNotEmpty) {
+        await launchUrl(
+          Uri.parse(pdfUrl),
+          mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_blank',
+        );
+      }
     } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
@@ -68,6 +89,9 @@ class _ResultScreenState extends State<ResultScreen> {
     // backend returns: {"success": true, "prediction": {...}, "clinical_report": "...", "ai_insights": "..."}
     final Map<String, dynamic>? data = args?['prediction'];
     final Map<String, dynamic>? prediction = data?['prediction'];
+    final Map<String, dynamic> intake = Map<String, dynamic>.from(
+      args?['intake'] ?? {},
+    );
     final dynamic clinicalReportRaw = data?['clinical_report'];
     String clinicalReport = "";
     if (clinicalReportRaw is String) {
@@ -85,23 +109,23 @@ class _ResultScreenState extends State<ResultScreen> {
     String rawConfidence = prediction?['confidence']?.toString() ?? "0.0";
 
     int stage = 0;
-    if (rawCondition.toLowerCase().contains("extensive gangrene"))
+    if (rawCondition.toLowerCase().contains("extensive gangrene")) {
       stage = 5;
-    else if (rawCondition.toLowerCase().contains("localized gangrene"))
+    } else if (rawCondition.toLowerCase().contains("localized gangrene")) {
       stage = 4;
-    else if (rawCondition.toLowerCase().contains("osteomyelitis") ||
-        rawCondition.toLowerCase().contains("grade 3"))
+    } else if (rawCondition.toLowerCase().contains("osteomyelitis") ||
+        rawCondition.toLowerCase().contains("grade 3")) {
       stage = 3;
-    else if (rawCondition.toLowerCase().contains("deep ulcer") ||
-        rawCondition.toLowerCase().contains("grade 2"))
+    } else if (rawCondition.toLowerCase().contains("deep ulcer") ||
+        rawCondition.toLowerCase().contains("grade 2")) {
       stage = 2;
-    else if (rawCondition.toLowerCase().contains("surface ulcer") ||
-        rawCondition.toLowerCase().contains("grade 1"))
+    } else if (rawCondition.toLowerCase().contains("surface ulcer") ||
+        rawCondition.toLowerCase().contains("grade 1")) {
       stage = 1;
-    else if (rawCondition.toLowerCase().contains("healthy") ||
-        rawCondition.toLowerCase().contains("grade 0"))
+    } else if (rawCondition.toLowerCase().contains("healthy") ||
+        rawCondition.toLowerCase().contains("grade 0")) {
       stage = 0;
-    else {
+    } else {
       // Fallback: try to extract number from condition string if it says "Grade X"
       final match = RegExp(
         r'grade\s*(\d)',
@@ -115,8 +139,18 @@ class _ResultScreenState extends State<ResultScreen> {
     double conf = double.tryParse(rawConfidence) ?? 0.89;
 
     final severityColor = _getSeverityColor(stage);
-    final authProvider = Provider.of<AuthProvider>(context);
-    final userName = authProvider.user?.displayName ?? 'Patient';
+    if (!_autoSaveStarted && prediction != null && intake.isNotEmpty) {
+      _autoSaveStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _saveDetailedReport(
+          intake: intake,
+          prediction: Map<String, dynamic>.from(prediction),
+          clinicalReport: clinicalReport,
+          aiInsights: aiInsights,
+          imagePath: imagePath ?? '',
+        );
+      });
+    }
 
     return Scaffold(
       body: Stack(
@@ -140,6 +174,8 @@ class _ResultScreenState extends State<ResultScreen> {
                   _buildTopBar(context),
                   const SizedBox(height: 30),
                   _buildImagePreview(imagePath),
+                  const SizedBox(height: 20),
+                  _buildPatientCard(intake),
                   const SizedBox(height: 30),
                   _buildResultsCard(
                     severityColor,
@@ -158,16 +194,24 @@ class _ResultScreenState extends State<ResultScreen> {
                       Expanded(
                         child: GlassButton(
                           text: _saved
-                              ? 'SAVED ✓'
-                              : (_isSaving ? 'SAVING...' : 'SAVE REPORT'),
-                          onPressed: _isSaving || _saved
+                              ? 'PDF READY'
+                              : (_isSaving ? 'SAVING...' : 'SAVE + PDF'),
+                          onPressed: _isSaving
                               ? null
                               : () {
-                                  _saveReport(
-                                    userName: userName,
-                                    stage: stage,
-                                    condition: rawCondition,
-                                    confidence: conf,
+                                  if (_saved && _pdfUrl != null) {
+                                    launchUrl(
+                                      Uri.parse(_pdfUrl!),
+                                      mode: LaunchMode.externalApplication,
+                                      webOnlyWindowName: '_blank',
+                                    );
+                                    return;
+                                  }
+                                  _saveDetailedReport(
+                                    intake: intake,
+                                    prediction: Map<String, dynamic>.from(
+                                      prediction ?? {},
+                                    ),
                                     clinicalReport: clinicalReport,
                                     aiInsights: aiInsights,
                                     imagePath: imagePath ?? '',
@@ -176,7 +220,11 @@ class _ResultScreenState extends State<ResultScreen> {
                         ),
                       ),
                       const SizedBox(width: 15),
-                      Expanded(child: _buildSecondaryButton('DASHBOARD')),
+                      Expanded(
+                        child: _buildSecondaryButton(
+                          _pdfUrl == null ? 'DASHBOARD' : 'OPEN PDF',
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -273,6 +321,44 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
           child: const Icon(Icons.zoom_in, color: Colors.white),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPatientCard(Map<String, dynamic> intake) {
+    final patient = Map<String, dynamic>.from(intake['patient'] ?? {});
+    return GlassCard(
+      borderRadius: 8,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'PATIENT DETAILS',
+            style: TextStyle(
+              color: AppTheme.primaryCyan,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${patient['name'] ?? 'Patient'}  •  File ${patient['fileNo'] ?? ''}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Age ${patient['age'] ?? ''} | ${patient['sex'] ?? ''} | ${patient['mobile'] ?? ''}',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.65),
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -441,7 +527,17 @@ class _ResultScreenState extends State<ResultScreen> {
         border: Border.all(color: Colors.white10),
       ),
       child: TextButton(
-        onPressed: () {},
+        onPressed: () async {
+          if (_pdfUrl != null) {
+            await launchUrl(
+              Uri.parse(_pdfUrl!),
+              mode: LaunchMode.externalApplication,
+              webOnlyWindowName: '_blank',
+            );
+          } else {
+            Navigator.pushReplacementNamed(context, '/dashboard');
+          }
+        },
         child: Text(
           text,
           style: const TextStyle(
@@ -470,13 +566,5 @@ class _ResultScreenState extends State<ResultScreen> {
       default:
         return Colors.blueAccent;
     }
-  }
-
-  String _getRecommendation(int stage) {
-    if (stage >= 4)
-      return 'CRITICAL: Gangrene detected. Immediate surgical consultation and emergency care required.';
-    if (stage >= 2)
-      return 'URGENT: Recommended immediate clinical inspection and debridement.';
-    return 'Observation required. Schedule follow-up scan in 48 hours.';
   }
 }

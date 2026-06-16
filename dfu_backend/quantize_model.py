@@ -16,9 +16,22 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from agents.mobilenetv3_lite import mobilenet_v3_small
+from torchvision.models import mobilenet_v3_small
 from utils.model_optimizer import ModelOptimizer, optimize_model_pipeline
 from utils.logger import get_logger
+import onnx.shape_inference
+import shutil
+
+original_infer_shapes_path = onnx.shape_inference.infer_shapes_path
+
+def patched_infer_shapes_path(*args, **kwargs):
+    try:
+        return original_infer_shapes_path(*args, **kwargs)
+    except Exception as e:
+        logger.warning(f"Bypassing ONNX shape inference error: {e}")
+        shutil.copyfile(args[0], args[1])
+
+onnx.shape_inference.infer_shapes_path = patched_infer_shapes_path
 
 logger = get_logger(__name__)
 

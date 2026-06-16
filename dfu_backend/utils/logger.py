@@ -17,7 +17,6 @@ LOG_DIR.mkdir(exist_ok=True)
 # Remove default handler
 logger.remove()
 
-# Custom JSON formatter for structured logging
 def json_formatter(record):
     """Format log record as JSON for better parsing and monitoring"""
     log_data = {
@@ -35,7 +34,8 @@ def json_formatter(record):
     if record["extra"]:
         log_data["extra"] = record["extra"]
     
-    return json.dumps(log_data)
+    serialized = json.dumps(log_data)
+    return serialized.replace("{", "{{").replace("}", "}}") + "\n"
 
 # Console handler - pretty format for development
 logger.add(

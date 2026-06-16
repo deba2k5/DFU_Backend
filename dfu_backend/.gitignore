@@ -35,3 +35,6 @@ wheels/
 
 .vercel
 .env*.local
+
+# Local ChromaDB
+chroma_dfu_reports/
