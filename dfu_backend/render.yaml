@@ -1,0 +1,34 @@
+# ── Render.com Blueprint ──────────────────────────────────────────────────────
+# Deploy the full DFU FastAPI backend (onnxruntime + opencv) as a web service.
+#
+# How to use:
+#   1. Push this repo to GitHub.
+#   2. Go to https://dashboard.render.com → New → Blueprint
+#   3. Connect your GitHub repo — Render auto-detects this file.
+#   4. Set the GROQ_API_KEY environment variable in the Render dashboard.
+#   5. After first deploy, copy the service URL (e.g. https://dfu-backend.onrender.com)
+#      and paste it into dfu_frontend/lib/services/firestore_service.dart as predictUrl.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: dfu-backend
+    runtime: docker
+    # Build context is the dfu_backend sub-folder
+    dockerfilePath: dfu_backend/Dockerfile
+    dockerContext: dfu_backend
+    plan: free
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false          # Set manually in Render dashboard
+      - key: MONGODB_URI
+        sync: false          # Set manually in Render dashboard
+      - key: MONGODB_DB
+        value: dfu_screening
+      - key: PUBLIC_BASE_URL
+        fromService:
+          type: web
+          name: dfu-backend
+          property: host
+    healthCheckPath: /health
+    autoDeploy: true

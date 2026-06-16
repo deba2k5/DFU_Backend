@@ -11,6 +11,7 @@ plugins {
 android {
     namespace = "com.dfu.healthcare.dfu_app"
     compileSdk = flutter.compileSdkVersion
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

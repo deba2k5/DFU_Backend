@@ -193,6 +193,9 @@ class _ScanScreenState extends State<ScanScreen> {
         'POST',
         Uri.parse('${BackendConfig.predictUrl}/predict'),
       );
+      
+      // Add bypass header for localtunnel to prevent HTML warning page
+      request.headers['Bypass-Tunnel-Reminder'] = 'true';
 
       request.fields['patient_data'] = jsonEncode(_intakePayload());
 

@@ -10,7 +10,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/ and lib64/ are Python venv artifacts — scope to venv paths only
+.venv/lib/
+venv/lib/
+env/lib/
 lib64/
 parts/
 sdist/
@@ -38,6 +41,10 @@ env/
 # Large datasets (do not commit)
 train_dataset/
 val_dataset/
+dfu_dataset/
+dfu_raw_dataset/
+dfu_train/
+dfu_val/
 Original_DFU_Augg/
 *.zip
 *.tar.gz

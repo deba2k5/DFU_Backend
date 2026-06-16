@@ -7,25 +7,31 @@ class DiagnosticianAgent:
     """
     Core AI Agent responsible for DFU classification.
     Uses ONNX-optimized MobileNetV3-Small model to predict Wagner Scale grades.
+
+    Model trained on all 6 Wagner grades (0–5) using the following datasets:
+      Grade 0 – Healthy              (Drive: 1XzICIYshUmmgyEe7NQC5WT72YZkzCFUc)
+      Grade 1 – Surface Ulcer        (Drive: 109IXFMl9RT8V2MVdqx87OrFUTJVE3iA3)
+      Grade 2 – Deep Ulcer           (Drive: 1eTcKyMYCLn_mb3qJukRqHnofaQ6cWCxV)
+      Grade 3 – Osteomyelitis        (Drive: 12F2RYIPzLoemaagWTikUWaL4RY2dRcZx)
+      Grade 4 – Localized Gangrene   (Drive: 1mSqmgkXHI2y2vVbhygCSVrbHCcjrwFTc)
+      Grade 5 – Extensive Gangrene   (Drive: 1ViajOP6Hd_3oQSmW2nZ3X5l4-ZW_Kh3n)
     """
     def __init__(self, model_path="models/ulcer_classification_mobilenetv3.onnx"):
-        # Correct class mapping for Wagner Scale DFU grades
+        # Wagner Scale DFU grade labels — index == grade
         self.classes = [
             'Grade 0 - Healthy',
             'Grade 1 - Surface Ulcer',
             'Grade 2 - Deep Ulcer',
             'Grade 3 - Osteomyelitis',
             'Grade 4 - Localized Gangrene',
-            'Grade 5 - Extensive Gangrene'
+            'Grade 5 - Extensive Gangrene',
         ]
-        # Index mapping
-        self.index_mapping = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
         self.model_path = model_path
         self._session = None
-        
-        # ImageNet normalization stats (ensure float32)
+
+        # ImageNet normalization (float32)
         self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-        self.std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        self.std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
     @property
     def session(self):
@@ -36,24 +42,24 @@ class DiagnosticianAgent:
 
     def _load_model(self, model_path):
         """Load ONNX model using ONNX Runtime."""
-        # Determine absolute path
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         abs_model_path = os.path.join(base_dir, model_path)
-        
+
         if not os.path.exists(abs_model_path):
             print(f"Warning: Model file not found at {abs_model_path}")
             return None
-        
+
         try:
-            # Create ONNX Runtime session
             session_options = ort.SessionOptions()
-            session_options.log_severity_level = 3  # Suppress warnings
+            session_options.log_severity_level = 3  # Suppress verbose warnings
             session = ort.InferenceSession(
                 abs_model_path,
-                providers=['CPUExecutionProvider'],
-                sess_options=session_options
+                providers=["CPUExecutionProvider"],
+                sess_options=session_options,
             )
-            print(f"Loaded ONNX model from {abs_model_path}")
+            # Validate output shape matches expected number of classes
+            out_shape = session.get_outputs()[0].shape
+            print(f"Loaded ONNX model from {abs_model_path} — output shape: {out_shape}")
             return session
         except Exception as e:
             print(f"Error loading ONNX model: {str(e)}")
@@ -89,54 +95,51 @@ class DiagnosticianAgent:
     def infer(self, processed_image: np.ndarray) -> dict:
         """
         Performs model inference on the processed image.
+        Returns Wagner grade, label, confidence, and per-class probabilities.
         """
         if self.session is None:
             return {
                 "stage": 0,
                 "label": "Model Not Loaded",
+                "condition": "Model Not Loaded",
                 "confidence": "0.0",
-                "error": "ONNX model could not be loaded"
+                "error": "ONNX model could not be loaded",
             }
-        
+
         try:
-            # Preprocess image
             input_tensor = self._preprocess_image(processed_image)
-            
-            # Run inference
-            input_name = self.session.get_inputs()[0].name
-            output_name = self.session.get_outputs()[0].name
-            
+            input_name   = self.session.get_inputs()[0].name
+            output_name  = self.session.get_outputs()[0].name
+
             outputs = self.session.run([output_name], {input_name: input_tensor})
-            logits = outputs[0][0]
-            
-            # Softmax to get probabilities
-            exp_logits = np.exp(logits - np.max(logits))  # Numerical stability
-            probs = exp_logits / np.sum(exp_logits)
-            
-            # Get prediction
+            logits  = outputs[0][0]
+
+            # Numerically stable softmax
+            exp_logits = np.exp(logits - np.max(logits))
+            probs      = exp_logits / np.sum(exp_logits)
+
             predicted_idx = int(np.argmax(probs))
-            confidence = float(np.max(probs))
-            
-            # Apply index mapping
-            predicted_idx = self.index_mapping.get(predicted_idx, predicted_idx)
-            
+            confidence    = float(np.max(probs))
+
             return {
-                "stage": predicted_idx,
-                "label": self.classes[predicted_idx],
-                "condition": self.classes[predicted_idx],
-                "confidence": f"{confidence:.4f}",
+                "stage":        predicted_idx,
+                "label":        self.classes[predicted_idx],
+                "condition":    self.classes[predicted_idx],
+                "confidence":   f"{confidence:.4f}",
                 "wagner_scale": f"Grade {predicted_idx}",
                 "probabilities": {
-                    self.classes[i]: round(float(probs[i]), 4) for i in range(len(self.classes))
-                }
+                    self.classes[i]: round(float(probs[i]), 4)
+                    for i in range(len(self.classes))
+                },
             }
         except Exception as e:
             print(f"Inference error: {str(e)}")
             return {
-                "stage": 0,
-                "label": "Inference Error",
+                "stage":      0,
+                "label":      "Inference Error",
+                "condition":  "Inference Error",
                 "confidence": "0.0",
-                "error": str(e)
+                "error":      str(e),
             }
 
 
