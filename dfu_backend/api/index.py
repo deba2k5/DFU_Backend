@@ -89,15 +89,23 @@ except Exception:
     PDF_OK = False
 
 # ── Agents ────────────────────────────────────────────────────────────
+# reporter and assistant are lightweight (no onnxruntime/opencv) — safe to
+# import eagerly. preprocessor (cv2) and diagnostician (onnxruntime) are
+# heavy and must stay unimported on Vercel; they are loaded lazily inside
+# the /predict handler which already returns 503 on Vercel anyway.
 try:
-    from agents.preprocessor import preprocessor_agent
-    from agents.diagnostician import diagnostician_agent
     from agents.reporter import reporting_agent
     from agents.assistant import assistant_agent
     AGENTS_OK = True
 except Exception as _ae:
+    reporting_agent = None  # type: ignore
+    assistant_agent = None  # type: ignore
     AGENTS_OK = False
     print(f"Agents unavailable: {_ae}")
+
+# These are only used inside /predict — imported lazily at call time
+preprocessor_agent = None  # type: ignore
+diagnostician_agent = None  # type: ignore
 
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://dfu-app-z513.vercel.app")
 
@@ -263,33 +271,40 @@ async def predict_ulcer(
     patient_data: str = Form("{}"),
 ):
     if not AGENTS_OK:
-        raise HTTPException(status_code=503, detail="AI agents not available on this deployment")
+        raise HTTPException(
+            status_code=503,
+            detail="AI inference not available on this deployment. "
+                   "Send image to the Render backend /predict endpoint instead."
+        )
+    # Lazy-load heavy agents only when actually called (Render deployment)
+    try:
+        from agents.preprocessor import preprocessor_agent as _pre
+        from agents.diagnostician import diagnostician_agent as _diag
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Inference dependencies missing: {e}")
+
     try:
         contents = await file.read()
         t0 = time.time()
-        
-        # Stage 1: Preprocess
+
         with track_inference("preprocess"):
             t_start = time.time()
-            processed_img = preprocessor_agent.process(contents)
+            processed_img = _pre.process(contents)
             preprocess_ms = (time.time() - t_start) * 1000
             log_performance("preprocess", preprocess_ms)
 
-        # Stage 2: Diagnose
         with track_inference("diagnosis"):
             t_start = time.time()
-            diagnosis = diagnostician_agent.infer(processed_img)
+            diagnosis = _diag.infer(processed_img)
             diagnosis_ms = (time.time() - t_start) * 1000
             log_performance("diagnosis", diagnosis_ms)
 
-        # Stage 3: Clinical report
         with track_inference("reporting"):
             t_start = time.time()
             base_report = reporting_agent.generate_summary(diagnosis)
             reporting_ms = (time.time() - t_start) * 1000
             log_performance("reporting", reporting_ms)
 
-        # Stage 4: Groq AI summary
         with track_inference("ai_summary"):
             t_start = time.time()
             ai_summary = assistant_agent.get_summary(str(diagnosis))
@@ -297,11 +312,9 @@ async def predict_ulcer(
             log_performance("ai_summary", ai_summary_ms)
 
         latency = time.time() - t0
-
-        # Record prediction metrics
         record_prediction(
             grade=f"Grade {diagnosis.get('stage', 0)}",
-            confidence=float(diagnosis.get('confidence', 0.0))
+            confidence=float(diagnosis.get("confidence", 0.0)),
         )
 
         return {
@@ -316,7 +329,7 @@ async def predict_ulcer(
                     "preprocess_ms": int(preprocess_ms),
                     "diagnosis_ms": int(diagnosis_ms),
                     "reporting_ms": int(reporting_ms),
-                    "ai_summary_ms": int(ai_summary_ms)
+                    "ai_summary_ms": int(ai_summary_ms),
                 },
                 "model": "MobileNetV3-Small (Trained)",
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

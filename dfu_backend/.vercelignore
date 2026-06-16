@@ -15,22 +15,46 @@ dist/
 *.egg-info/
 .vscode
 .idea
+
+# Training datasets
 train_dataset/
 val_dataset/
 Original_DFU_Augg/
+
+# Heavy model files — only the lightweight .onnx is needed on Vercel
+# (Vercel lambda doesn't run inference anyway — agents_ok=false)
+models/*.pth
+models/*.pth.data
+
+# Logs and build artifacts
 *.log
+logs/
+build_logs/
+deploy_logs/
+
+# Scripts not needed in lambda
 test_*.py
 training*.py
-README.md
-MLOPS_*.md
-VERCEL_*.md
+quantize_model.py
 deploy*.ps1
 deploy*.sh
 setup_*.ps1
 setup_*.sh
-logs/
-build_logs/
-deploy_logs/
+
+# Docs
+README.md
+MLOPS_*.md
+VERCEL_*.md
+
+# Docker / Render config (not needed in serverless)
+Dockerfile
+render.yaml
 docker-compose*
 prometheus.yml
-quantize_model.py
+
+# Root requirements.txt — Vercel must use api/requirements.txt instead
+requirements.txt
+requirements-vercel.txt
+
+# ChromaDB local store
+chroma_dfu_reports/
