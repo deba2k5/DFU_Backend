@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DFU MLOps Monitor</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-border: #262d38;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --cyan: #22d3ee;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--panel-border);
+    background: linear-gradient(180deg, #131820, #0e1116);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 18px;
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  header h1 .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 0 0 rgba(0,0,0,0);
+    transition: background .3s;
+  }
+  header h1 .dot.up { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  header h1 .dot.down { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .spacer { flex: 1; }
+  header input[type=text] {
+    background: #0d1117;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    width: 300px;
+  }
+  header select, header button {
+    background: #0d1117;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  header button.primary {
+    background: var(--cyan);
+    color: #04222a;
+    border: none;
+    font-weight: 600;
+  }
+  header .meta {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  main {
+    padding: 20px 24px 60px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .section-title {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 28px 0 12px;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .card .label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .card .value {
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .card .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .card.status .value { font-size: 16px; display:flex; align-items:center; gap:8px; }
+  .badge {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--muted); display:inline-block;
+  }
+  .badge.ok { background: var(--green); }
+  .badge.bad { background: var(--red); }
+  .badge.warn { background: var(--yellow); }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 14px;
+  }
+  .chart-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .chart-panel .title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text);
+  }
+  .chart-panel .title span.hint {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  canvas { width: 100%; display: block; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  table th { color: var(--muted); font-weight: 600; }
+  .empty-row td { color: var(--muted); text-align: center; padding: 18px; }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 12px 18px;
+    margin-top: 20px;
+  }
+  details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  pre {
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 11px;
+    color: #9fb3c8;
+    max-height: 360px;
+    overflow: auto;
+    margin-top: 10px;
+  }
+  .error-banner {
+    display: none;
+    background: rgba(248, 81, 73, 0.12);
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    color: #ffb4ae;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot" id="statusDot"></span> DFU MLOps Monitor</h1>
+  <input type="text" id="baseUrlInput" value="https://dfubackend.vercel.app" />
+  <select id="intervalSelect">
+    <option value="3000">Refresh: 3s</option>
+    <option value="5000" selected>Refresh: 5s</option>
+    <option value="10000">Refresh: 10s</option>
+    <option value="30000">Refresh: 30s</option>
+  </select>
+  <button class="primary" id="connectBtn">Connect</button>
+  <button id="pauseBtn">Pause</button>
+  <div class="spacer"></div>
+  <div class="meta" id="lastUpdated">Not connected</div>
+</header>
+
+<main>
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="section-title">Service Health</div>
+  <div class="cards" id="healthCards"></div>
+
+  <div class="section-title">Key Metrics</div>
+  <div class="cards" id="metricCards"></div>
+
+  <div class="section-title">Traffic &amp; Latency</div>
+  <div class="charts-grid">
+    <div class="chart-panel">
+      <div class="title">Requests / sec <span class="hint">throughput over time</span></div>
+      <canvas id="chartThroughput" height="220"></canvas>
+    </div>
+    <div class="chart-panel">
+      <div class="title">Avg Request Latency <span class="hint">seconds, over time</span></div>
+      <canvas id="chartLatency" height="220"></canvas>
+    </div>
+    <div class="chart-panel">
+      <div class="title">Requests by Endpoint <span class="hint">cumulative total</span></div>
+      <canvas id="chartEndpoints" height="220"></canvas>
+    </div>
+    <div class="chart-panel">
+      <div class="title">Status Codes <span class="hint">cumulative total</span></div>
+      <canvas id="chartStatus" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="section-title">Model Pipeline (MLOps)</div>
+  <div class="charts-grid">
+    <div class="chart-panel">
+      <div class="title">Pipeline Stage Avg Duration <span class="hint">preprocess / diagnosis / reporting / ai_summary</span></div>
+      <canvas id="chartStages" height="220"></canvas>
+    </div>
+    <div class="chart-panel">
+      <div class="title">Predictions by Wagner Grade <span class="hint">observation count</span></div>
+      <canvas id="chartGrades" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="section-title">Errors</div>
+  <div class="chart-panel">
+    <table id="errorsTable">
+      <thead><tr><th>Error Type</th><th>Endpoint</th><th>Count</th></tr></thead>
+      <tbody><tr class="empty-row"><td colspan="3">No errors observed yet.</td></tr></tbody>
+    </table>
+  </div>
+
+  <details>
+    <summary>Raw /metrics exposition (Prometheus text format)</summary>
+    <pre id="rawMetrics">Not connected.</pre>
+  </details>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const baseUrlInput = $('baseUrlInput');
+  const intervalSelect = $('intervalSelect');
+  const connectBtn = $('connectBtn');
+  const pauseBtn = $('pauseBtn');
+  const statusDot = $('statusDot');
+  const lastUpdated = $('lastUpdated');
+  const errorBanner = $('errorBanner');
+  const rawMetrics = $('rawMetrics');
+
+  const COLORS = ['#22d3ee', '#a371f7', '#3fb950', '#d29922', '#f85149', '#58a6ff', '#f778ba', '#7ee787'];
+
+  let timer = null;
+  let paused = false;
+  let prevSnapshot = null;
+  let prevTime = null;
+  const MAX_POINTS = 60;
+  const history = {
+    throughput: [],
+    latency: {}, // endpoint -> array
+    times: [],
+  };
+
+  // ---------- Prometheus text parser ----------
+  function parsePrometheusText(text) {
+    // metric[name] = [{labels:{...}, value:Number}]
+    const metrics = {};
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if (!line || line.startsWith('#')) continue;
+      const spaceIdx = line.lastIndexOf(' ');
+      if (spaceIdx === -1) continue;
+      const left = line.slice(0, spaceIdx);
+      const valueStr = line.slice(spaceIdx + 1);
+      const value = parseFloat(valueStr);
+      if (Number.isNaN(value)) continue;
+
+      let name = left;
+      let labels = {};
+      const braceIdx = left.indexOf('{');
+      if (braceIdx !== -1) {
+        name = left.slice(0, braceIdx);
+        const labelStr = left.slice(braceIdx + 1, left.lastIndexOf('}'));
+        labelStr.split(',').forEach((pair) => {
+          if (!pair) return;
+          const eqIdx = pair.indexOf('=');
+          if (eqIdx === -1) return;
+          const k = pair.slice(0, eqIdx).trim();
+          let v = pair.slice(eqIdx + 1).trim();
+          v = v.replace(/^"|"$/g, '');
+          labels[k] = v;
+        });
+      }
+      if (!metrics[name]) metrics[name] = [];
+      metrics[name].push({ labels, value });
+    }
+    return metrics;
+  }
+
+  function sumBy(series, keyFn) {
+    const out = {};
+    (series || []).forEach((s) => {
+      const k = keyFn(s.labels);
+      out[k] = (out[k] || 0) + s.value;
+    });
+    return out;
+  }
+
+  // ---------- Fetch helpers ----------
+  async function fetchJson(url) {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
+    return res.json();
+  }
+  async function fetchText(url) {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
+    return res.text();
+  }
+
+  // ---------- Rendering: cards ----------
+  function renderHealthCards({ health, root }) {
+    const items = [
+      {
+        label: 'API',
+        ok: !!health,
+        text: health ? 'Online' : 'Unreachable',
+      },
+      {
+        label: 'MongoDB',
+        ok: root ? !!root.mongo : null,
+        text: root ? (root.mongo ? 'Connected' : 'Unavailable') : '—',
+      },
+      {
+        label: 'AI Agents',
+        ok: root ? !!root.agents_ok : null,
+        text: root ? (root.agents_ok ? 'Loaded' : 'Unavailable') : '—',
+      },
+      {
+        label: 'PDF Engine',
+        ok: root ? !!root.pdf : null,
+        text: root ? (root.pdf ? 'Ready' : 'Unavailable') : '—',
+      },
+    ];
+    $('healthCards').innerHTML = items.map((it) => `
+      <div class="card status">
+        <div class="label">${it.label}</div>
+        <div class="value">
+          <span class="badge ${it.ok === null ? '' : it.ok ? 'ok' : 'bad'}"></span>
+          ${it.text}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderMetricCards(m) {
+    const totalRequests = sumTotal(m['dfu_requests_total']);
+    const totalErrors = sumTotal(m['dfu_errors_total']);
+    const errorRate = totalRequests > 0 ? ((totalErrors / totalRequests) * 100).toFixed(2) : '0.00';
+    const activeRequests = sumTotal(m['dfu_active_requests']);
+    const avgLatency = avgFromHistogram(m['dfu_request_duration_seconds']);
+    const cacheHits = sumTotal(m['dfu_cache_hits_total']);
+    const cacheMisses = sumTotal(m['dfu_cache_misses_total']);
+    const cacheTotal = cacheHits + cacheMisses;
+    const cacheRate = cacheTotal > 0 ? ((cacheHits / cacheTotal) * 100).toFixed(1) : '—';
+
+    const cards = [
+      { label: 'Total Requests', value: totalRequests.toLocaleString() },
+      { label: 'Total Errors', value: totalErrors.toLocaleString(), sub: totalErrors > 0 ? 'check Errors table below' : 'no errors recorded' },
+      { label: 'Error Rate', value: `${errorRate}%` },
+      { label: 'Active Requests', value: activeRequests.toLocaleString() },
+      { label: 'Avg Request Latency', value: avgLatency !== null ? `${(avgLatency * 1000).toFixed(0)} ms` : '—' },
+      { label: 'Cache Hit Rate', value: cacheTotal > 0 ? `${cacheRate}%` : 'n/a' },
+    ];
+    $('metricCards').innerHTML = cards.map((c) => `
+      <div class="card">
+        <div class="label">${c.label}</div>
+        <div class="value">${c.value}</div>
+        ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function sumTotal(series) {
+    if (!series) return 0;
+    return series.reduce((acc, s) => acc + s.value, 0);
+  }
+
+  function avgFromHistogram(series) {
+    if (!series) return null;
+    // dfu_request_duration_seconds_sum / dfu_request_duration_seconds_count are separate metric names
+    return null; // handled separately via helper below
+  }
+
+  function histogramAvgByLabel(metrics, baseName, labelKey) {
+    const sums = metrics[`${baseName}_sum`] || [];
+    const counts = metrics[`${baseName}_count`] || [];
+    const sumBy_ = {};
+    const countBy_ = {};
+    sums.forEach((s) => { const k = s.labels[labelKey] || 'unknown'; sumBy_[k] = (sumBy_[k] || 0) + s.value; });
+    counts.forEach((s) => { const k = s.labels[labelKey] || 'unknown'; countBy_[k] = (countBy_[k] || 0) + s.value; });
+    const out = {};
+    Object.keys(sumBy_).forEach((k) => {
+      out[k] = countBy_[k] > 0 ? sumBy_[k] / countBy_[k] : 0;
+    });
+    return out;
+  }
+
+  function overallAvg(metrics, baseName) {
+    const sums = metrics[`${baseName}_sum`] || [];
+    const counts = metrics[`${baseName}_count`] || [];
+    const totalSum = sums.reduce((a, s) => a + s.value, 0);
+    const totalCount = counts.reduce((a, s) => a + s.value, 0);
+    return totalCount > 0 ? totalSum / totalCount : null;
+  }
+
+  function histogramCountByLabel(metrics, baseName, labelKey) {
+    const counts = metrics[`${baseName}_count`] || [];
+    const out = {};
+    counts.forEach((s) => { const k = s.labels[labelKey] || 'unknown'; out[k] = (out[k] || 0) + s.value; });
+    return out;
+  }
+
+  // ---------- Canvas charts (no external deps) ----------
+  function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const cssHeight = canvas.height || 220;
+    canvas.width = Math.max(rect.width, 300) * dpr;
+    canvas.height = cssHeight * dpr;
+    canvas.style.height = cssHeight + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, width: canvas.width / dpr, height: cssHeight };
+  }
+
+  function drawLineChart(canvasId, series) {
+    // series: [{ label, color, points: [{x,y}] }]
+    const canvas = $(canvasId);
+    const { ctx, width, height } = setupCanvas(canvas);
+    ctx.clearRect(0, 0, width, height);
+    const padL = 42, padR = 10, padT = 10, padB = 22;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+
+    let maxY = 0.0001;
+    series.forEach((s) => s.points.forEach((p) => { if (p.y > maxY) maxY = p.y; }));
+    maxY *= 1.15;
+
+    const n = Math.max(...series.map((s) => s.points.length), 1);
+
+    // grid
+    ctx.strokeStyle = '#20262f';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (plotH * i) / 4;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(width - padR, y);
+      ctx.stroke();
+      ctx.fillStyle = '#5b6470';
+      ctx.font = '10px sans-serif';
+      const label = (maxY - (maxY * i) / 4);
+      ctx.fillText(formatAxisNum(label), 4, y + 3);
+    }
+
+    if (n <= 1) {
+      ctx.fillStyle = '#5b6470';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('Collecting data…', padL + 10, padT + plotH / 2);
+      return;
+    }
+
+    series.forEach((s) => {
+      if (s.points.length < 2) return;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      s.points.forEach((p, i) => {
+        const x = padL + (plotW * i) / (n - 1);
+        const y = padT + plotH - (p.y / maxY) * plotH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // fill under last series subtly
+      ctx.globalAlpha = 0.08;
+      ctx.lineTo(padL + plotW, padT + plotH);
+      ctx.lineTo(padL, padT + plotH);
+      ctx.closePath();
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+
+    // legend
+    let lx = padL;
+    series.forEach((s) => {
+      ctx.fillStyle = s.color;
+      ctx.fillRect(lx, height - 12, 8, 8);
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(s.label, lx + 12, height - 4);
+      lx += ctx.measureText(s.label).width + 30;
+    });
+  }
+
+  function formatAxisNum(v) {
+    if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+    if (v < 1 && v > 0) return v.toFixed(2);
+    return Math.round(v).toString();
+  }
+
+  function drawBarChart(canvasId, items) {
+    // items: [{label, value, color}]
+    const canvas = $(canvasId);
+    const { ctx, width, height } = setupCanvas(canvas);
+    ctx.clearRect(0, 0, width, height);
+    const padL = 10, padR = 10, padT = 10, padB = 34;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+
+    if (!items.length) {
+      ctx.fillStyle = '#5b6470';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('No data yet.', padL + 10, padT + plotH / 2);
+      return;
+    }
+
+    const maxV = Math.max(...items.map((i) => i.value), 0.0001) * 1.15;
+    const gap = 14;
+    const barW = Math.max((plotW - gap * (items.length - 1)) / items.length, 8);
+
+    items.forEach((it, idx) => {
+      const x = padL + idx * (barW + gap);
+      const barH = (it.value / maxV) * plotH;
+      const y = padT + plotH - barH;
+      ctx.fillStyle = it.color;
+      ctx.beginPath();
+      const r = 4;
+      ctx.moveTo(x, y + barH);
+      ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r);
+      ctx.lineTo(x + barW - r, y);
+      ctx.arcTo(x + barW, y, x + barW, y + r, r);
+      ctx.lineTo(x + barW, y + barH);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#e6edf3';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(formatAxisNum(it.value), x + barW / 2, y - 6);
+
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '10px sans-serif';
+      const label = it.label.length > 12 ? it.label.slice(0, 11) + '…' : it.label;
+      ctx.fillText(label, x + barW / 2, padT + plotH + 14);
+      ctx.textAlign = 'left';
+    });
+  }
+
+  // ---------- Errors table ----------
+  function renderErrorsTable(series) {
+    const tbody = document.querySelector('#errorsTable tbody');
+    if (!series || !series.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="3">No errors observed yet.</td></tr>';
+      return;
+    }
+    const rows = series
+      .filter((s) => s.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .map((s) => `<tr><td>${s.labels.error_type || '—'}</td><td>${s.labels.endpoint || '—'}</td><td>${s.value}</td></tr>`)
+      .join('');
+    tbody.innerHTML = rows || '<tr class="empty-row"><td colspan="3">No errors observed yet.</td></tr>';
+  }
+
+  // ---------- Main poll cycle ----------
+  async function poll() {
+    const base = baseUrlInput.value.trim().replace(/\/$/, '');
+    if (!base) return;
+    try {
+      const [health, root, metricsText] = await Promise.all([
+        fetchJson(`${base}/health`).catch(() => null),
+        fetchJson(`${base}/`).catch(() => null),
+        fetchText(`${base}/metrics`),
+      ]);
+
+      errorBanner.style.display = 'none';
+      statusDot.className = 'dot up';
+      lastUpdated.textContent = `Connected · last update ${new Date().toLocaleTimeString()}`;
+
+      const metrics = parsePrometheusText(metricsText);
+      rawMetrics.textContent = metricsText || '(empty — metrics endpoint returned no data)';
+
+      renderHealthCards({ health, root });
+      renderMetricCardsFull(metrics);
+      renderErrorsTable(metrics['dfu_errors_total']);
+
+      updateHistoryAndCharts(metrics);
+    } catch (err) {
+      statusDot.className = 'dot down';
+      errorBanner.style.display = 'block';
+      errorBanner.textContent = `Could not reach backend at "${base}": ${err.message}. Check the URL, and that the backend's CORS allows this origin.`;
+    }
+  }
+
+  function renderMetricCardsFull(metrics) {
+    const totalRequests = sumTotal(metrics['dfu_requests_total']);
+    const totalErrors = sumTotal(metrics['dfu_errors_total']);
+    const errorRate = totalRequests > 0 ? ((totalErrors / totalRequests) * 100).toFixed(2) : '0.00';
+    const activeRequests = sumTotal(metrics['dfu_active_requests']);
+    const avgLatency = overallAvg(metrics, 'dfu_request_duration_seconds');
+    const cacheHits = sumTotal(metrics['dfu_cache_hits_total']);
+    const cacheMisses = sumTotal(metrics['dfu_cache_misses_total']);
+    const cacheTotal = cacheHits + cacheMisses;
+    const cacheRate = cacheTotal > 0 ? ((cacheHits / cacheTotal) * 100).toFixed(1) : null;
+
+    const cards = [
+      { label: 'Total Requests', value: totalRequests.toLocaleString() },
+      { label: 'Total Errors', value: totalErrors.toLocaleString() },
+      { label: 'Error Rate', value: `${errorRate}%` },
+      { label: 'Active Requests', value: activeRequests.toLocaleString() },
+      { label: 'Avg Request Latency', value: avgLatency !== null ? `${(avgLatency * 1000).toFixed(0)} ms` : '—' },
+      { label: 'Cache Hit Rate', value: cacheRate !== null ? `${cacheRate}%` : 'n/a' },
+    ];
+    $('metricCards').innerHTML = cards.map((c) => `
+      <div class="card">
+        <div class="label">${c.label}</div>
+        <div class="value">${c.value}</div>
+      </div>
+    `).join('');
+  }
+
+  function updateHistoryAndCharts(metrics) {
+    const now = Date.now();
+    const totalRequests = sumTotal(metrics['dfu_requests_total']);
+
+    // throughput = delta requests / delta seconds
+    let rps = 0;
+    if (prevSnapshot !== null && prevTime !== null) {
+      const dt = (now - prevTime) / 1000;
+      const dReq = totalRequests - prevSnapshot;
+      rps = dt > 0 ? Math.max(dReq / dt, 0) : 0;
+    }
+    prevSnapshot = totalRequests;
+    prevTime = now;
+
+    history.times.push(now);
+    history.throughput.push(rps);
+    if (history.times.length > MAX_POINTS) {
+      history.times.shift();
+      history.throughput.shift();
+    }
+
+    // latency by endpoint over time
+    const latByEndpoint = histogramAvgByLabel(metrics, 'dfu_request_duration_seconds', 'endpoint');
+    Object.keys(latByEndpoint).forEach((ep) => {
+      if (!history.latency[ep]) history.latency[ep] = [];
+      history.latency[ep].push(latByEndpoint[ep]);
+      if (history.latency[ep].length > MAX_POINTS) history.latency[ep].shift();
+    });
+    // keep arrays aligned in length by padding missing endpoints with 0 for new points
+    Object.keys(history.latency).forEach((ep) => {
+      while (history.latency[ep].length < history.throughput.length) {
+        history.latency[ep].unshift(0);
+      }
+    });
+
+    drawLineChart('chartThroughput', [
+      { label: 'req/s', color: COLORS[0], points: history.throughput.map((y, i) => ({ x: i, y })) },
+    ]);
+
+    const latSeries = Object.keys(history.latency).slice(0, 5).map((ep, idx) => ({
+      label: ep,
+      color: COLORS[idx % COLORS.length],
+      points: history.latency[ep].map((y, i) => ({ x: i, y })),
+    }));
+    drawLineChart('chartLatency', latSeries);
+
+    // requests by endpoint (bar)
+    const byEndpoint = sumBy(metrics['dfu_requests_total'], (l) => l.endpoint || 'unknown');
+    const endpointItems = Object.keys(byEndpoint)
+      .sort((a, b) => byEndpoint[b] - byEndpoint[a])
+      .slice(0, 8)
+      .map((k, idx) => ({ label: k, value: byEndpoint[k], color: COLORS[idx % COLORS.length] }));
+    drawBarChart('chartEndpoints', endpointItems);
+
+    // status codes (bar)
+    const byStatus = sumBy(metrics['dfu_requests_total'], (l) => l.status || 'unknown');
+    const statusItems = Object.keys(byStatus)
+      .sort()
+      .map((k) => ({
+        label: k,
+        value: byStatus[k],
+        color: k.startsWith('2') ? '#3fb950' : k.startsWith('4') ? '#d29922' : k.startsWith('5') ? '#f85149' : '#58a6ff',
+      }));
+    drawBarChart('chartStatus', statusItems);
+
+    // pipeline stages (bar) — average duration per stage in ms
+    const stageAvg = histogramAvgByLabel(metrics, 'dfu_pipeline_stage_duration_seconds', 'stage');
+    const stageOrder = ['preprocess', 'diagnosis', 'reporting', 'ai_summary'];
+    const stageItems = stageOrder
+      .filter((s) => stageAvg[s] !== undefined)
+      .map((s, idx) => ({ label: s, value: +(stageAvg[s] * 1000).toFixed(1), color: COLORS[idx % COLORS.length] }));
+    // include any extra stages not in the known order
+    Object.keys(stageAvg).forEach((s, idx) => {
+      if (!stageOrder.includes(s)) stageItems.push({ label: s, value: +(stageAvg[s] * 1000).toFixed(1), color: COLORS[(idx + 4) % COLORS.length] });
+    });
+    drawBarChart('chartStages', stageItems);
+
+    // predictions by grade (bar) — observation counts
+    const gradeCounts = histogramCountByLabel(metrics, 'dfu_prediction_confidence', 'grade');
+    const gradeItems = Object.keys(gradeCounts)
+      .sort()
+      .map((g, idx) => ({ label: g, value: gradeCounts[g], color: COLORS[idx % COLORS.length] }));
+    drawBarChart('chartGrades', gradeItems);
+  }
+
+  // ---------- Controls ----------
+  function start() {
+    stop();
+    poll();
+    const interval = parseInt(intervalSelect.value, 10);
+    timer = setInterval(poll, interval);
+    paused = false;
+    pauseBtn.textContent = 'Pause';
+  }
+  function stop() {
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+
+  connectBtn.addEventListener('click', () => {
+    prevSnapshot = null;
+    prevTime = null;
+    history.throughput = [];
+    history.latency = {};
+    history.times = [];
+    start();
+  });
+  intervalSelect.addEventListener('change', () => { if (!paused) start(); });
+  pauseBtn.addEventListener('click', () => {
+    paused = !paused;
+    if (paused) { stop(); pauseBtn.textContent = 'Resume'; }
+    else { start(); }
+  });
+  window.addEventListener('resize', () => { /* charts redraw on next poll */ });
+
+  // auto-connect on load
+  start();
+})();
+</script>
+</body>
+</html>

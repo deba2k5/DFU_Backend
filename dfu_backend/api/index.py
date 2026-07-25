@@ -369,8 +369,12 @@ async def predict_ulcer(
 async def create_report(payload: ReportCreate):
     if not MONGO_OK:
         raise HTTPException(status_code=503, detail="Database not available")
+    patient_name = str(payload.patient.get("name", "")).strip()
+    if not patient_name:
+        raise HTTPException(status_code=400, detail="Patient name is required")
     try:
         doc = payload.model_dump()
+        doc["patient"]["name"] = patient_name
         doc["file_no"] = doc.get("patient", {}).get("fileNo") or _file_no()
         doc["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         doc["stage"] = _stage_from_prediction(doc.get("prediction", {}))
@@ -413,6 +417,37 @@ async def list_reports(limit: int = 50):
     try:
         docs = []
         for doc in reports_col.find({}, {"pdf_base64": 0}).sort("created_at", DESCENDING).limit(limit):
+            docs.append({
+                "id": str(doc["_id"]),
+                "file_no": doc.get("file_no", ""),
+                "patient": doc.get("patient", {}),
+                "stage": doc.get("stage", 0),
+                "condition": doc.get("prediction", {}).get("condition", ""),
+                "confidence": doc.get("prediction", {}).get("confidence", 0),
+                "clinical_report": doc.get("clinical_report", ""),
+                "ai_insights": doc.get("ai_insights", ""),
+                "image_path": doc.get("image_path", ""),
+                "pdf_url": f"{PUBLIC_BASE_URL}/reports/{str(doc['_id'])}/pdf",
+                "created_at": doc.get("created_at", ""),
+            })
+        return {"success": True, "reports": docs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/reports/search")
+async def search_reports(name: str, limit: int = 100):
+    name = name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not MONGO_OK:
+        return {"success": True, "reports": []}
+    try:
+        import re
+        pattern = re.compile(re.escape(name), re.IGNORECASE)
+        docs = []
+        query = {"patient.name": pattern}
+        for doc in reports_col.find(query, {"pdf_base64": 0}).sort("created_at", DESCENDING).limit(limit):
             docs.append({
                 "id": str(doc["_id"]),
                 "file_no": doc.get("file_no", ""),

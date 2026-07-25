@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/glass_widgets.dart';
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
@@ -88,12 +86,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
               _buildCameraQuickAccess(context),
               _buildSliverPadding(_buildRiskMeter()),
               _buildSliverPadding(_buildChecklist()),
-              _buildSliverPadding(_buildLatestReport()),
-              _buildRecentScansStream(
-                context,
-                title: 'Your History',
-                isDoctor: false,
-              ),
             ],
           ),
         ],
@@ -129,7 +121,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
               const Text(
                 'CURRENT DFU RISK LEVEL',
                 style: TextStyle(
-                  color: Colors.white54,
+                  color: AppTheme.textMuted,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -160,7 +152,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
                   value: latest == null ? 0 : (stage + 1) / 6,
-                  backgroundColor: Colors.white10,
+                  backgroundColor: AppTheme.cardBorder,
                   minHeight: 8,
                   valueColor: AlwaysStoppedAnimation<Color>(color),
                 ),
@@ -170,7 +162,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 latest == null
                     ? 'Start a foot scan to create your first clinical report.'
                     : 'Latest report: Stage ${latest.stage} - ${latest.condition}',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
               ),
             ],
           ),
@@ -188,7 +180,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           const Text(
             'DAILY CARE CHECKLIST',
             style: TextStyle(
-              color: Colors.white54,
+              color: AppTheme.textMuted,
               fontSize: 12,
               fontWeight: FontWeight.bold,
             ),
@@ -218,7 +210,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 shape: BoxShape.circle,
                 color: isChecked ? AppTheme.primaryCyan : Colors.transparent,
                 border: Border.all(
-                  color: isChecked ? AppTheme.primaryCyan : Colors.white24,
+                  color: isChecked ? AppTheme.primaryCyan : AppTheme.cardBorder,
                   width: 2,
                 ),
               ),
@@ -231,7 +223,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
               child: Text(
                 title,
                 style: TextStyle(
-                  color: isChecked ? Colors.white54 : Colors.white,
+                  color: isChecked ? AppTheme.textMuted : AppTheme.textDark,
                   decoration: isChecked
                       ? TextDecoration.lineThrough
                       : TextDecoration.none,
@@ -244,74 +236,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  Widget _buildLatestReport() {
-    return StreamBuilder<List<DFUReport>>(
-      stream: FirestoreService().getRecentScans(limit: 1),
-      builder: (context, snapshot) {
-        final latest = (snapshot.data ?? []).isEmpty
-            ? null
-            : snapshot.data!.first;
-        return GlassCard(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryCyan.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(
-                  Icons.picture_as_pdf,
-                  color: AppTheme.primaryCyan,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      latest == null ? 'No stored PDF report' : latest.fileNo,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      latest == null
-                          ? 'Reports will appear here after scan'
-                          : latest.pdfUrl,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.open_in_new,
-                  color: AppTheme.primaryCyan,
-                ),
-                onPressed: latest?.pdfUrl == null || latest!.pdfUrl.isEmpty
-                    ? null
-                    : () => launchUrl(
-                        Uri.parse(latest.pdfUrl),
-                        mode: LaunchMode.externalApplication,
-                        webOnlyWindowName: '_blank',
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
 // -------------------------------------------------------------
@@ -325,8 +249,6 @@ class DoctorDashboard extends StatefulWidget {
 }
 
 class _DoctorDashboardState extends State<DoctorDashboard> {
-  final TextEditingController _searchController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -334,12 +256,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       perf.stop();
     });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -351,57 +267,12 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
           CustomScrollView(
             slivers: [
               _buildHeader(context, 'Doctor Portal', 'Clinical Oversight'),
-              _buildSliverPadding(_buildSearchBar()),
               _buildStatsGrid(context, isAdmin: false),
               _buildCameraQuickAccess(context),
               _buildSliverPadding(_buildActionButtons()),
-              _buildSliverPadding(_buildCriticalQueueStream()),
-              _buildRecentScansStream(
-                context,
-                title: 'Recent Scans Queue',
-                isDoctor: true,
-              ),
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: TextField(
-        controller: _searchController,
-        style: const TextStyle(color: Colors.white),
-        onChanged: (val) => setState(() {}),
-        decoration: InputDecoration(
-          hintText: 'Search Patient ID or Name...',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-          prefixIcon: const Icon(Icons.search, color: AppTheme.primaryCyan),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    color: Colors.white54,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {});
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 15,
-            vertical: 15,
-          ),
-        ),
       ),
     );
   }
@@ -446,7 +317,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
             Text(
               label,
               style: const TextStyle(
-                color: Colors.white,
+                color: AppTheme.textDark,
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
@@ -457,43 +328,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     );
   }
 
-  Widget _buildCriticalQueueStream() {
-    return StreamBuilder<List<DFUReport>>(
-      stream: FirestoreService().getAllReportsStream(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
-
-        final criticalReports = snapshot.data!
-            .where((r) => r.stage >= 2)
-            .toList();
-
-        if (criticalReports.isEmpty) return const SizedBox.shrink();
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'CRITICAL ATTENTION REQUIRED',
-              style: TextStyle(
-                color: Colors.redAccent,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...criticalReports.take(3).map((report) {
-              return _buildScanItem(
-                report.userName.isEmpty ? 'Unknown Patient' : report.userName,
-                'Stage ${report.stage} Detection',
-                _formatTimeAgo(report.timestamp),
-                Colors.red,
-              );
-            }).toList(),
-          ],
-        );
-      },
-    );
-  }
 }
 
 // -------------------------------------------------------------
@@ -532,7 +366,7 @@ class AdminDashboard extends StatelessWidget {
           const Text(
             'INFRASTRUCTURE STATUS',
             style: TextStyle(
-              color: Colors.white54,
+              color: AppTheme.textMuted,
               fontSize: 12,
               fontWeight: FontWeight.bold,
             ),
@@ -564,14 +398,14 @@ class AdminDashboard extends StatelessWidget {
           child: Text(
             name,
             style: const TextStyle(
-              color: Colors.white,
+              color: AppTheme.textDark,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         Text(
           ip,
-          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
+          style: TextStyle(color: AppTheme.textMuted.withOpacity(0.4), fontSize: 12),
         ),
       ],
     );
@@ -617,7 +451,7 @@ class AdminDashboard extends StatelessWidget {
           Text(
             count,
             style: const TextStyle(
-              color: Colors.white,
+              color: AppTheme.textDark,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -625,7 +459,7 @@ class AdminDashboard extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
+              color: AppTheme.textMuted.withOpacity(0.5),
               fontSize: 12,
             ),
           ),
@@ -641,7 +475,7 @@ class AdminDashboard extends StatelessWidget {
         const Text(
           'LATEST SYSTEM LOGS',
           style: TextStyle(
-            color: Colors.white,
+            color: AppTheme.textDark,
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
@@ -695,11 +529,7 @@ Widget _buildSliverPadding(Widget child) {
 Widget _buildBackground() {
   return Container(
     decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF0F172A), Color(0xFF0B0E14)],
-      ),
+      gradient: AppTheme.hospitalBackground,
     ),
   );
 }
@@ -719,14 +549,14 @@ Widget _buildHeader(BuildContext context, String name, String subtitle) {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
+                    color: AppTheme.textMuted.withOpacity(0.6),
                     fontSize: 16,
                   ),
                 ),
                 Text(
                   name,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
+                    color: AppTheme.textDark,
                     fontWeight: FontWeight.bold,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -784,14 +614,14 @@ Widget _buildCameraQuickAccess(BuildContext context) {
                 Text(
                   "AI Foot Screen",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppTheme.textDark,
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                   ),
                 ),
                 Text(
                   "Launch predictive model engine",
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -799,7 +629,7 @@ Widget _buildCameraQuickAccess(BuildContext context) {
           IconButton(
             icon: const Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white,
+              color: AppTheme.textDark,
               size: 18,
             ),
             onPressed: () => Navigator.pushNamed(context, '/scan'),
@@ -868,7 +698,7 @@ Widget _buildStatCard(String title, String value, IconData icon, Color color) {
             Text(
               value,
               style: const TextStyle(
-                color: Colors.white,
+                color: AppTheme.textDark,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
@@ -876,176 +706,13 @@ Widget _buildStatCard(String title, String value, IconData icon, Color color) {
             Text(
               title,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: AppTheme.textMuted.withOpacity(0.5),
                 fontSize: 12,
               ),
             ),
           ],
         ),
       ],
-    ),
-  );
-}
-
-Widget _buildRecentScansStream(
-  BuildContext context, {
-  required String title,
-  required bool isDoctor,
-}) {
-  final stream = isDoctor
-      ? FirestoreService().getAllReportsStream()
-      : FirestoreService().getRecentScans(limit: 10);
-
-  return SliverToBoxAdapter(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextButton(
-                onPressed: () {},
-                child: const Text(
-                  'View All',
-                  style: TextStyle(color: AppTheme.primaryCyan),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          StreamBuilder<List<DFUReport>>(
-            stream: stream,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                // Shimmer placeholder while loading
-                return Shimmer.fromColors(
-                  baseColor: Colors.grey[800]!,
-                  highlightColor: Colors.grey[700]!,
-                  child: Column(
-                    children: List.generate(
-                      3,
-                      (_) => Container(
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        height: 80,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                );
-              }
-              if (snapshot.hasError) {
-                return Text(
-                  'Error: ${snapshot.error}',
-                  style: const TextStyle(color: Colors.red),
-                );
-              }
-              final reports = snapshot.data ?? [];
-              if (reports.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Text(
-                    'No recent scans found.',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                );
-              }
-
-              return Column(
-                children: reports.map((report) {
-                  Color color;
-                  if (report.stage == 0) {
-                    color = AppTheme.mintGreen;
-                  } else if (report.stage == 1) {
-                    color = Colors.yellow;
-                  } else if (report.stage == 2) {
-                    color = Colors.orange;
-                  } else {
-                    color = Colors.red;
-                  }
-
-                  String name = isDoctor
-                      ? report.userName
-                      : 'Scan ID #${report.id.length > 5 ? report.id.substring(0, 5) : report.id}';
-                  if (name.isEmpty) name = 'Unknown Patient';
-
-                  return _buildScanItem(
-                    name,
-                    'Stage ${report.stage} - ${report.condition}',
-                    _formatTimeAgo(report.timestamp),
-                    color,
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-String _formatTimeAgo(DateTime dateTime) {
-  final difference = DateTime.now().difference(dateTime);
-  if (difference.inDays > 0) return '${difference.inDays} days ago';
-  if (difference.inHours > 0) return '${difference.inHours} hours ago';
-  if (difference.inMinutes > 0) return '${difference.inMinutes} mins ago';
-  return 'Just now';
-}
-
-Widget _buildScanItem(String name, String status, String time, Color color) {
-  return Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    child: GlassCard(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.description_outlined, color: color),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  status,
-                  style: TextStyle(color: color.withOpacity(0.8), fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            time,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
     ),
   );
 }

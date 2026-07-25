@@ -6,8 +6,8 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 class BackendConfig {
   // Single backend — Vercel handles everything: /predict, /reports, /health, /chat
   // onnxruntime + ONNX model are bundled in the Vercel lambda (50MB limit)
-  static const String baseUrl = 'https://dfu-app-z513.vercel.app';
-  static const String predictUrl = 'https://dfu-app-z513.vercel.app';
+  static const String baseUrl = 'https://dfubackend.vercel.app';
+  static const String predictUrl = 'https://dfubackend.vercel.app';
 }
 
 
@@ -237,6 +237,33 @@ class FirestoreService {
       aiInsights: aiInsights,
       imagePath: imagePath,
     );
+  }
+
+  Future<List<DFUReport>> searchReportsByName(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return [];
+    final response = await http.get(
+      Uri.parse(
+        '${BackendConfig.baseUrl}/reports/search?name=${Uri.encodeQueryComponent(trimmed)}',
+      ),
+    );
+    if (response.statusCode != 200) {
+      String detail = 'Search failed';
+      try {
+        final errBody = jsonDecode(response.body);
+        detail = errBody['detail']?.toString() ?? errBody.toString();
+      } catch (_) {}
+      throw Exception(detail);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['reports'] as List<dynamic>? ?? [])
+        .map(
+          (item) => DFUReport.fromMap(
+            Map<String, dynamic>.from(item),
+            item['id']?.toString() ?? '',
+          ),
+        )
+        .toList();
   }
 
   Stream<List<DFUReport>> getUserReportsStream() => getAllReportsStream();

@@ -56,9 +56,11 @@ class _ResultScreenState extends State<ResultScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Report saved and PDF generated.'),
+          content: Text(
+            'Report saved. Your doctor can now find it under Records by your name.',
+          ),
           backgroundColor: AppTheme.mintGreen,
-          duration: Duration(seconds: 2),
+          duration: Duration(seconds: 3),
         ),
       );
 
@@ -161,7 +163,7 @@ class _ResultScreenState extends State<ResultScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topRight,
                 end: Alignment.bottomLeft,
-                colors: [Color(0xFF0F172A), Color(0xFF0B0E14)],
+                colors: [Color(0xFFEAF6FC), Color(0xFFF1FBF6)],
               ),
             ),
           ),
@@ -241,7 +243,7 @@ class _ResultScreenState extends State<ResultScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios, color: AppTheme.textDark),
           onPressed: () =>
               Navigator.pushReplacementNamed(context, '/dashboard'),
         ),
@@ -277,7 +279,7 @@ class _ResultScreenState extends State<ResultScreen> {
               const Text(
                 'AI ANALYSIS RESULT',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.textDark,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.5,
                 ),
@@ -285,7 +287,7 @@ class _ResultScreenState extends State<ResultScreen> {
             ],
           ),
         ),
-        const Icon(Icons.more_vert, color: Colors.white),
+        const Icon(Icons.more_vert, color: AppTheme.textDark),
       ],
     );
   }
@@ -296,7 +298,7 @@ class _ResultScreenState extends State<ResultScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppTheme.cardBorder),
         image: imagePath != null
             ? DecorationImage(
                 image: NetworkImage(
@@ -317,7 +319,7 @@ class _ResultScreenState extends State<ResultScreen> {
           decoration: BoxDecoration(
             color: Colors.black45,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white24),
+            border: Border.all(color: AppTheme.cardBorder),
           ),
           child: const Icon(Icons.zoom_in, color: Colors.white),
         ),
@@ -345,7 +347,7 @@ class _ResultScreenState extends State<ResultScreen> {
           Text(
             '${patient['name'] ?? 'Patient'}  •  File ${patient['fileNo'] ?? ''}',
             style: const TextStyle(
-              color: Colors.white,
+              color: AppTheme.textDark,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
@@ -354,7 +356,7 @@ class _ResultScreenState extends State<ResultScreen> {
           Text(
             'Age ${patient['age'] ?? ''} | ${patient['sex'] ?? ''} | ${patient['mobile'] ?? ''}',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.65),
+              color: AppTheme.textMuted.withOpacity(0.65),
               fontSize: 12,
             ),
           ),
@@ -384,7 +386,7 @@ class _ResultScreenState extends State<ResultScreen> {
                     Text(
                       'AI SCREENING OUTPUT',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: AppTheme.textMuted.withOpacity(0.5),
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -417,7 +419,7 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
             ],
           ),
-          const Divider(height: 40, color: Colors.white10),
+          const Divider(height: 40, color: AppTheme.cardBorder),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -437,7 +439,7 @@ class _ResultScreenState extends State<ResultScreen> {
         Text(
           value,
           style: const TextStyle(
-            color: Colors.white,
+            color: AppTheme.textDark,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -445,7 +447,7 @@ class _ResultScreenState extends State<ResultScreen> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+          style: TextStyle(color: AppTheme.textMuted.withOpacity(0.4), fontSize: 11),
         ),
       ],
     );
@@ -467,7 +469,7 @@ class _ResultScreenState extends State<ResultScreen> {
               const Text(
                 'GROQ AI INSIGHTS',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.textDark,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                   letterSpacing: 1,
@@ -479,7 +481,7 @@ class _ResultScreenState extends State<ResultScreen> {
           Text(
             insights.isNotEmpty ? insights : "Generating cognitive summary...",
             style: const TextStyle(
-              color: Colors.white,
+              color: AppTheme.textDark,
               fontSize: 13,
               height: 1.5,
             ),
@@ -491,7 +493,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Widget _buildReportCard(String report) {
     return GlassCard(
-      opacity: 0.1,
+      opacity: 0.94,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -509,7 +511,7 @@ class _ResultScreenState extends State<ResultScreen> {
                 ? report
                 : "Observation required. Schedule follow-up scan in 48 hours.",
             style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
+              color: AppTheme.textMuted.withOpacity(0.8),
               fontSize: 13,
               height: 1.4,
             ),
@@ -522,9 +524,9 @@ class _ResultScreenState extends State<ResultScreen> {
   Widget _buildSecondaryButton(String text) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppTheme.cardBorder),
       ),
       child: TextButton(
         onPressed: () async {
@@ -541,7 +543,7 @@ class _ResultScreenState extends State<ResultScreen> {
         child: Text(
           text,
           style: const TextStyle(
-            color: Colors.white,
+            color: AppTheme.textDark,
             fontWeight: FontWeight.bold,
           ),
         ),
