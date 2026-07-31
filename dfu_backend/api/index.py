@@ -81,8 +81,10 @@ try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
+        Image as RLImage,
     )
     PDF_OK = True
 except Exception:
@@ -177,6 +179,27 @@ def _kv_table(title, rows):
     return story
 
 
+def _embed_photo(image_b64: str):
+    """Return reportlab flowables that embed the foot photograph, or [] if absent/unreadable."""
+    if not image_b64:
+        return []
+    try:
+        img_bytes = base64.b64decode(image_b64)
+        reader = ImageReader(BytesIO(img_bytes))
+        iw, ih = reader.getSize()
+        max_w, max_h = 8.5 * cm, 10 * cm
+        scale = min(max_w / iw, max_h / ih)
+        w, h = iw * scale, ih * scale
+        return [
+            Paragraph("<b>Foot Photograph</b>", getSampleStyleSheet()["Heading3"]),
+            RLImage(BytesIO(img_bytes), width=w, height=h),
+            Spacer(1, 0.35 * cm),
+        ]
+    except Exception as e:
+        print(f"Photo embed failed (non-fatal): {e}")
+        return []
+
+
 def _generate_pdf(doc: dict) -> bytes:
     if not PDF_OK:
         return b""
@@ -214,6 +237,7 @@ def _generate_pdf(doc: dict) -> bytes:
     exam = doc.get("examination", {})
     if exam:
         story += _kv_table("Examination Of Foot", [[k, str(v)] for k, v in exam.items()])
+    story += _embed_photo(doc.get("image_base64", ""))
     story += _kv_table("Foot Scan Report", [
         ["Wagner Classification", f"Grade-{doc.get('stage', 0)}"],
         ["Detected Condition", prediction.get("condition", "")],
@@ -235,6 +259,8 @@ class ReportCreate(BaseModel):
     clinical_report: str = ""
     ai_insights: str = ""
     image_path: str = ""
+    image_base64: str = ""
+    image_content_type: str = "image/jpeg"
 
 
 # ── Routes ─────────────────────────────────────────────────────────────
@@ -372,6 +398,8 @@ async def create_report(payload: ReportCreate):
     patient_name = str(payload.patient.get("name", "")).strip()
     if not patient_name:
         raise HTTPException(status_code=400, detail="Patient name is required")
+    if len(payload.image_base64) > 8_000_000:  # ~6MB raw — guard against oversized Mongo docs
+        raise HTTPException(status_code=400, detail="Image too large (max ~6MB)")
     try:
         doc = payload.model_dump()
         doc["patient"]["name"] = patient_name
@@ -379,6 +407,7 @@ async def create_report(payload: ReportCreate):
         doc["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         doc["stage"] = _stage_from_prediction(doc.get("prediction", {}))
         doc["model"] = "MobileNetV3-Small ONNX"
+        doc["has_image"] = bool(doc.get("image_base64"))
 
         # Try to generate PDF; non-fatal if it fails
         try:
@@ -405,9 +434,28 @@ async def create_report(payload: ReportCreate):
             "file_no": doc["file_no"],
             "stage": doc["stage"],
             "pdf_url": f"{PUBLIC_BASE_URL}/reports/{str(result.inserted_id)}/pdf",
+            "image_url": f"{PUBLIC_BASE_URL}/reports/{str(result.inserted_id)}/image" if doc["has_image"] else "",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report save error: {str(e)}\n{traceback.format_exc()}")
+
+
+def _serialize_report(doc: dict) -> dict:
+    rid = str(doc["_id"])
+    return {
+        "id": rid,
+        "file_no": doc.get("file_no", ""),
+        "patient": doc.get("patient", {}),
+        "stage": doc.get("stage", 0),
+        "condition": doc.get("prediction", {}).get("condition", ""),
+        "confidence": doc.get("prediction", {}).get("confidence", 0),
+        "clinical_report": doc.get("clinical_report", ""),
+        "ai_insights": doc.get("ai_insights", ""),
+        "image_path": doc.get("image_path", ""),
+        "pdf_url": f"{PUBLIC_BASE_URL}/reports/{rid}/pdf",
+        "image_url": f"{PUBLIC_BASE_URL}/reports/{rid}/image" if doc.get("has_image") else "",
+        "created_at": doc.get("created_at", ""),
+    }
 
 
 @app.get("/reports")
@@ -416,20 +464,8 @@ async def list_reports(limit: int = 50):
         return {"success": True, "reports": []}
     try:
         docs = []
-        for doc in reports_col.find({}, {"pdf_base64": 0}).sort("created_at", DESCENDING).limit(limit):
-            docs.append({
-                "id": str(doc["_id"]),
-                "file_no": doc.get("file_no", ""),
-                "patient": doc.get("patient", {}),
-                "stage": doc.get("stage", 0),
-                "condition": doc.get("prediction", {}).get("condition", ""),
-                "confidence": doc.get("prediction", {}).get("confidence", 0),
-                "clinical_report": doc.get("clinical_report", ""),
-                "ai_insights": doc.get("ai_insights", ""),
-                "image_path": doc.get("image_path", ""),
-                "pdf_url": f"{PUBLIC_BASE_URL}/reports/{str(doc['_id'])}/pdf",
-                "created_at": doc.get("created_at", ""),
-            })
+        for doc in reports_col.find({}, {"pdf_base64": 0, "image_base64": 0}).sort("created_at", DESCENDING).limit(limit):
+            docs.append(_serialize_report(doc))
         return {"success": True, "reports": docs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -447,20 +483,8 @@ async def search_reports(name: str, limit: int = 100):
         pattern = re.compile(re.escape(name), re.IGNORECASE)
         docs = []
         query = {"patient.name": pattern}
-        for doc in reports_col.find(query, {"pdf_base64": 0}).sort("created_at", DESCENDING).limit(limit):
-            docs.append({
-                "id": str(doc["_id"]),
-                "file_no": doc.get("file_no", ""),
-                "patient": doc.get("patient", {}),
-                "stage": doc.get("stage", 0),
-                "condition": doc.get("prediction", {}).get("condition", ""),
-                "confidence": doc.get("prediction", {}).get("confidence", 0),
-                "clinical_report": doc.get("clinical_report", ""),
-                "ai_insights": doc.get("ai_insights", ""),
-                "image_path": doc.get("image_path", ""),
-                "pdf_url": f"{PUBLIC_BASE_URL}/reports/{str(doc['_id'])}/pdf",
-                "created_at": doc.get("created_at", ""),
-            })
+        for doc in reports_col.find(query, {"pdf_base64": 0, "image_base64": 0}).sort("created_at", DESCENDING).limit(limit):
+            docs.append(_serialize_report(doc))
         return {"success": True, "reports": docs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -482,6 +506,31 @@ async def get_report_pdf(report_id: str):
             content=pdf_bytes,
             media_type="application/pdf",
             headers={"Content-Disposition": f"inline; filename={doc.get('file_no', report_id)}.pdf"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/reports/{report_id}/image")
+async def get_report_image(report_id: str):
+    if not MONGO_OK:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        doc = reports_col.find_one({"_id": ObjectId(report_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Report not found")
+        raw = doc.get("image_base64", "")
+        if not raw:
+            raise HTTPException(status_code=404, detail="No photo stored for this report")
+        img_bytes = base64.b64decode(raw)
+        content_type = doc.get("image_content_type") or "image/jpeg"
+        ext = "png" if "png" in content_type else "jpg"
+        return Response(
+            content=img_bytes,
+            media_type=content_type,
+            headers={"Content-Disposition": f"inline; filename={doc.get('file_no', report_id)}.{ext}"},
         )
     except HTTPException:
         raise

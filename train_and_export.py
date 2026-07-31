@@ -36,19 +36,19 @@ import torch.optim as optim
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-# Folder names inside dfu_dataset/ exactly as they appear on disk
+# Absolute/relative source folder for each grade (new Google-Drive export dirs)
 GRADE_DIRS = {
-    0: "Grade0",
-    1: "Grade1",
-    2: "Grade2",
-    3: "Grade3",
-    4: "Grade4",
-    5: "Grade5",
+    0: "GR 0-20260719T092049Z-1-001/GR 0",
+    1: "GR 1-20260719T092355Z-1-001/GR 1",
+    2: "GR 2-20260719T092358Z-1-001/GR 2",
+    3: "GR 3-20260719T092401Z-1-001/GR 3",
+    4: "GR 4-20260719T092404Z-1-001/GR 4",
+    5: "GR 5-20260719T092407Z-1-001/GR 5",
 }
 
 CLASS_LABELS = [
@@ -92,7 +92,7 @@ def build_splits():
             shutil.rmtree(split_dir)
 
     for grade, folder_name in GRADE_DIRS.items():
-        src = os.path.join(RAW_DIR, folder_name)
+        src = folder_name
         if not os.path.exists(src):
             print(f"  WARNING: {src} not found — skipping grade {grade}")
             continue
@@ -189,6 +189,11 @@ def build_model() -> nn.Module:
         weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
     )
     in_features = model.classifier[3].in_features
+    # Stronger dropout than the torchvision default (0.2) — the dataset is
+    # tiny (92 train images) and the model overfits fast, so we lean on
+    # heavier regularization to keep the minority classes (e.g. Grade 1,
+    # 8 train images) from being memorized/ignored.
+    model.classifier[2] = nn.Dropout(p=0.4, inplace=True)
     model.classifier[3] = nn.Linear(in_features, NUM_CLASSES)
     return model
 
@@ -206,30 +211,42 @@ def train():
     print(f"  Train samples : {len(train_ds)}")
     print(f"  Val   samples : {len(val_ds)}")
 
-    # Per-class sample counts for weighted loss
+    # Per-class sample counts — used to build a WeightedRandomSampler so that
+    # every epoch draws roughly equally from all six grades, instead of the
+    # majority classes (e.g. Grade 2, 22 images) dominating gradient updates
+    # while the minority classes (e.g. Grade 1, 8 images) are barely seen.
     labels       = [s[1] for s in train_ds.samples]
     class_counts = np.bincount(labels, minlength=NUM_CLASSES).astype(np.float32)
     class_counts = np.where(class_counts == 0, 1.0, class_counts)   # avoid /0
-    class_weights = torch.tensor(
-        1.0 / class_counts, dtype=torch.float32
-    ).to(device)
-    class_weights = class_weights / class_weights.sum() * NUM_CLASSES
-    print("  Class weights:", [f"{w:.3f}" for w in class_weights.cpu().tolist()])
+    inv_freq     = 1.0 / class_counts
+    print("  Class counts (train):", class_counts.astype(int).tolist())
+
+    sample_weights = torch.tensor(
+        [inv_freq[l] for l in labels], dtype=torch.double
+    )
+    sampler = WeightedRandomSampler(
+        weights=sample_weights, num_samples=len(train_ds), replacement=True
+    )
 
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE,
-                              shuffle=True,  num_workers=0, pin_memory=False)
+                              sampler=sampler, num_workers=0, pin_memory=False)
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE,
                               shuffle=False, num_workers=0, pin_memory=False)
 
-    model     = build_model().to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+    model = build_model().to(device)
+    # Class balance is now handled by the sampler above, so the loss itself
+    # stays unweighted (avoids double-correcting) but adds label smoothing —
+    # cheap extra regularization against the severe overfitting seen on a
+    # 92-image training set (train acc hit 100% by epoch 25 previously).
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=2e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=NUM_EPOCHS, eta_min=1e-6
     )
 
-    best_val_acc = 0.0
-    best_state   = None
+    best_macro_acc = -1.0
+    best_val_acc   = 0.0
+    best_state     = None
 
     for epoch in range(1, NUM_EPOCHS + 1):
         # ---- train ----
@@ -254,30 +271,46 @@ def train():
         # ---- val ----
         model.eval()
         v_loss = v_correct = v_total = 0
+        per_class_correct = np.zeros(NUM_CLASSES)
+        per_class_total   = np.zeros(NUM_CLASSES)
         with torch.no_grad():
             for imgs, lbls in val_loader:
                 imgs, lbls = imgs.to(device), lbls.to(device)
                 out   = model(imgs)
+                preds = out.argmax(1)
                 v_loss    += criterion(out, lbls).item() * imgs.size(0)
-                v_correct += (out.argmax(1) == lbls).sum().item()
+                v_correct += (preds == lbls).sum().item()
                 v_total   += imgs.size(0)
+                for c in range(NUM_CLASSES):
+                    mask = (lbls == c)
+                    per_class_total[c]   += mask.sum().item()
+                    per_class_correct[c] += (preds[mask] == c).sum().item()
 
         val_loss = v_loss / v_total
         val_acc  = v_correct / v_total
+        # Macro-average accuracy: mean of per-class accuracy, giving Grade 1
+        # (3 val samples) equal weight to Grade 2 (6 val samples) instead of
+        # letting overall accuracy be dominated by the larger classes.
+        present = per_class_total > 0
+        macro_acc = float(np.mean(per_class_correct[present] / per_class_total[present]))
         scheduler.step()
 
-        marker = " ◀ best" if val_acc >= best_val_acc else ""
+        is_best = macro_acc > best_macro_acc or (
+            macro_acc == best_macro_acc and val_acc > best_val_acc
+        )
+        marker = " <- best" if is_best else ""
         print(f"  [{epoch:02d}/{NUM_EPOCHS}]  "
               f"train {train_loss:.4f}/{train_acc:.4f}  "
-              f"val {val_loss:.4f}/{val_acc:.4f}  "
+              f"val {val_loss:.4f}/{val_acc:.4f}  macro {macro_acc:.4f}  "
               f"[{time.time()-t0:.1f}s]{marker}")
 
-        if val_acc >= best_val_acc:
-            best_val_acc = val_acc
-            best_state   = {k: v.cpu().clone()
-                            for k, v in model.state_dict().items()}
+        if is_best:
+            best_macro_acc = macro_acc
+            best_val_acc   = val_acc
+            best_state     = {k: v.cpu().clone()
+                              for k, v in model.state_dict().items()}
 
-    print(f"\n  Best val accuracy: {best_val_acc:.4f}")
+    print(f"\n  Best val accuracy: {best_val_acc:.4f}  (macro-avg: {best_macro_acc:.4f})")
     model.load_state_dict(best_state)
     return model, device
 
@@ -333,7 +366,7 @@ def export_onnx(model, device):
         "img_size": IMG_SIZE,
         "class_labels": CLASS_LABELS,
     }, pth_path)
-    print(f"  Saved .pth  →  {pth_path}")
+    print(f"  Saved .pth  ->  {pth_path}")
 
     # Remove stale ONNX files
     for old in [onnx_path, onnx_path + ".data"]:
@@ -354,7 +387,7 @@ def export_onnx(model, device):
         do_constant_folding=True,
     )
     size_mb = os.path.getsize(onnx_path) / (1024 * 1024)
-    print(f"  Saved .onnx →  {onnx_path}  ({size_mb:.1f} MB)")
+    print(f"  Saved .onnx ->  {onnx_path}  ({size_mb:.1f} MB)")
 
     # Sanity-check with onnxruntime
     import onnxruntime as ort
