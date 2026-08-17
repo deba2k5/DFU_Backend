@@ -35,6 +35,8 @@ from agents.preprocessor import preprocessor_agent
 from agents.diagnostician import diagnostician_agent
 from agents.reporter import reporting_agent
 from agents.assistant import assistant_agent
+from agents.vlm_fallback import vlm_fallback_agent
+from agents.ensemble import combine_predictions
 
 fastapi_app = FastAPI(
     title="DFU Screening Platform API",
@@ -321,6 +323,28 @@ async def predict_ulcer(file: UploadFile = File(...), patient_data: str = Form("
             diagnosis_ms = (time.time() - t_start) * 1000
             log_performance("diagnosis", diagnosis_ms)
 
+        # Stage 2b: Groq VLM (Qwen) — always consulted alongside the local
+        # ONNX model and reconciled into one final grade (see
+        # agents/ensemble.py). The local model was trained on only ~117
+        # images, so a second, independent opinion on every request catches
+        # out-of-distribution misclassifications instead of only kicking in
+        # when the local model already reports low confidence.
+        vlm_fallback_ms = 0
+        used_vlm_fallback = False
+        vlm_result = None
+        try:
+            with track_inference("vlm_fallback"):
+                t_start = time.time()
+                vlm_result = vlm_fallback_agent.classify(contents)
+                vlm_fallback_ms = (time.time() - t_start) * 1000
+            log_performance("vlm_fallback", vlm_fallback_ms)
+        except Exception as fallback_err:
+            log_error_with_context(fallback_err, {"endpoint": "/predict", "stage": "vlm_fallback"})
+            # Keep the local model's result — better than failing the request.
+
+        diagnosis = combine_predictions(diagnosis, vlm_result)
+        used_vlm_fallback = vlm_result is not None
+
         # Stage 3: Clinical report
         with track_inference("reporting"):
             t_start = time.time()
@@ -354,10 +378,13 @@ async def predict_ulcer(file: UploadFile = File(...), patient_data: str = Form("
                 "stages": {
                     "preprocess_ms": int(preprocess_ms),
                     "diagnosis_ms": int(diagnosis_ms),
+                    "vlm_fallback_ms": int(vlm_fallback_ms),
                     "reporting_ms": int(reporting_ms),
                     "ai_summary_ms": int(ai_summary_ms)
                 },
-                "model": "MobileNetV3-Small (Trained)",
+                "model": "MobileNetV3 + Groq VLM (ensemble)" if used_vlm_fallback else "MobileNetV3-Small (Trained)",
+                "used_vlm_fallback": used_vlm_fallback,
+                "ensemble": diagnosis.get("ensemble", "local_only"),
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             },
         }

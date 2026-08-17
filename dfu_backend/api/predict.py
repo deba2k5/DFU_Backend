@@ -13,6 +13,8 @@ from agents.preprocessor import preprocessor_agent
 from agents.diagnostician import diagnostician_agent
 from agents.reporter import reporting_agent
 from agents.assistant import assistant_agent
+from agents.vlm_fallback import vlm_fallback_agent
+from agents.ensemble import combine_predictions
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -46,16 +48,30 @@ class handler(BaseHTTPRequestHandler):
             # Pipeline stages
             processed_img = preprocessor_agent.process(image_bytes)
             diagnosis = diagnostician_agent.infer(processed_img)
+
+            # Groq VLM (Qwen) — always consulted alongside the local ONNX
+            # model and reconciled into one final grade (see
+            # agents/ensemble.py) rather than only kicking in when the
+            # local model already reports low confidence.
+            vlm_result = None
+            try:
+                vlm_result = vlm_fallback_agent.classify(image_bytes)
+            except Exception:
+                pass  # keep the local model's result
+            diagnosis = combine_predictions(diagnosis, vlm_result)
+            used_vlm_fallback = vlm_result is not None
+
             base_report = reporting_agent.generate_summary(diagnosis)
             ai_clinical_summary = assistant_agent.get_summary(str(diagnosis))
-            
+
             response = {
                 "success": True,
                 "prediction": diagnosis,
                 "clinical_report": base_report,
                 "ai_insights": ai_clinical_summary,
                 "metadata": {
-                    "model": "MobileNetV3-Small (Trained)",
+                    "model": "MobileNetV3 + Groq VLM (ensemble)" if used_vlm_fallback else "MobileNetV3-Small (Trained)",
+                    "used_vlm_fallback": used_vlm_fallback,
                     "timestamp": json.dumps({"status": "ok"}, default=str),
                 }
             }
