@@ -10,14 +10,14 @@ class AIAssistantAgent:
 
     Note: Groq periodically retires model IDs (llama-3.3-70b-versatile was
     removed and started 404ing — see vlm_fallback.py for the same issue on
-    the vision side). qwen/qwen3.6-27b is already confirmed working there,
+    the vision side). qwen/qwen3.8-27b is already confirmed working there,
     so it's reused here too. It's a reasoning model that emits a visible
     <think>...</think> block before its answer, so max_completion_tokens
     needs enough headroom for that reasoning pass or the final answer comes
     back truncated/empty.
     """
 
-    MODEL = "qwen/qwen3.6-27b"
+    MODEL = "qwen/qwen3.8-27b"
 
     def __init__(self):
         self._api_key = os.environ.get("GROQ_API_KEY")
@@ -41,7 +41,7 @@ class AIAssistantAgent:
     @staticmethod
     def _strip_think(text: str) -> str:
         """Removes the model's <think>...</think> reasoning block, leaving
-        only the final answer. qwen/qwen3.6-27b always emits one inline in
+        only the final answer. qwen/qwen3.8-27b always emits one inline in
         `content` (unlike gpt-oss models, which put reasoning in a separate
         field) and often runs long, so callers need generous
         max_completion_tokens or the block never closes and this returns

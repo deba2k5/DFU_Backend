@@ -6,7 +6,7 @@ import re
 
 class VLMFallbackAgent:
     """
-    Fallback DFU Wagner-grade classifier using Groq's qwen/qwen3.6-27b
+    Fallback DFU Wagner-grade classifier using Groq's qwen/qwen3.8-27b
     vision model. The local ONNX model was trained on only ~117 images, so
     it can be unreliable on out-of-distribution photos. When its confidence
     is low (or inference fails outright), this agent shows the same image
@@ -17,10 +17,10 @@ class VLMFallbackAgent:
     looking for the JSON payload. Vision-capable models on Groq change
     over time — llama-4-scout / llama-3.2-*-vision 404'd ("does not exist
     or you do not have access to it") on this account when this was
-    written; qwen/qwen3.6-27b was confirmed working instead.
+    written; qwen/qwen3.8-27b was confirmed working instead.
     """
 
-    MODEL = "qwen/qwen3.6-27b"
+    MODEL = "qwen/qwen3.8-27b"
 
     CLASS_LABELS = [
         "Grade 0 - Healthy",
